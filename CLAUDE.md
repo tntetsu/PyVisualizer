@@ -44,12 +44,14 @@ PyVisualizer/
 │   ├── trace-builder.test.js # トレースを JSVisualizer の TraceBuilder に通す
 │   ├── debugger.test.js      # PyDebugger と共通コアの組み合わせ（LoopBinding・tuple のクローン・出力の断片）
 │   ├── line-state.test.js    # 変数の状態の変化の列を CPython と比べる（tools/trace_states.py が CPython 側）
+│   ├── adr-examples.test.js  # 利用者に見える ADR の例をそのままテストにしたもの（テスト名に ADR 番号）
 │   ├── tools/trace_states.py # CPython で sys.settrace を使い、変数の状態の変化の列を JSON で出す
 │   └── cases/                # 意味論・例外の比較用の Python プログラム
 ├── scripts/
 │   ├── build-spike.mjs       # JSVisualizer のフロントエンドに Python エンジンを差し込んで web/ にビルド
 │   ├── capture-spike.mjs     # 全サンプル × 全タブのスクリーンショットとブラウザのエラーを収集
-│   └── compare-js-core.mjs   # JSInterpreter の master と作業ブランチで JS のトレースを 1 件ずつ比べる
+│   ├── compare-js-core.mjs   # JSInterpreter の master と作業ブランチで JS のトレースを 1 件ずつ比べる
+│   └── capture-js-dom.mjs    # JSVisualizer（JS 版）の全サンプル・全タブの画面の状態を記録し、2 つのビルドを比べる（Phase 3）
 ├── web/                      # ビルド出力（gitignore 対象）
 ├── docs/
 │   ├── development-plan.md   # 開発計画書（アーキテクチャ・フェーズ・リスク・決定事項）
@@ -94,5 +96,7 @@ JSVisualizer と BhvVisualizer は「ソフトウェア基礎論」（2026-09-30
 - 計画・方針を変えたら [docs/development-plan.md](docs/development-plan.md) とこのファイルのステータスを更新する
 
 ### テスト
+
+**利用者に見える ADR には例とテストを付ける**（2026-11-25、JSVisualizer と同じ約束）：画面やステップ実行で何が表示される／されないかを決める・直す ADR には、利用者に見える例（入力のプログラムと「表示される／されない」）を実装用語なしで書き、同じ例をテストにする（テスト名に ADR 番号を入れる。`tests/adr-examples.test.js`）。テストは、直す前のコードで失敗することを確かめてから足す。内部の構造だけの ADR には求めない。
 
 Python の意味論の正しさは、同じプログラムを CPython（`python3`）でも実行して比較するテストで確認する（[docs/development-plan.md](docs/development-plan.md) 4.3 節）。出力と例外の種類（`tests/oracle.test.js`）と、変数の状態の変化の列（`tests/line-state.test.js`）の 2 つを比べる。`samples/` と `tests/cases/` に置いた `.py` は自動で両方の対象になる（`error_` で始まるテストケースは出力の比較だけ）。1 行に複数の文を書くと変数の状態の比較が合わなくなるので書かない。

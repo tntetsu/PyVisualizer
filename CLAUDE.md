@@ -17,7 +17,7 @@
 
 [BhvVisualizer](../BhvVisualizer)（学習ログの収集・分析）と組み合わせて授業で使えるようにすることも目標です。
 
-**現在のステータス**: Phase 0（スパイク）・Phase 1（共通コアの切り出し）完了（2026-11-24）。Phase 0 の結果は **Go**（[docs/phase0-report.md](docs/phase0-report.md)）、パーサーは Lezer で確定。Phase 1 で JSInterpreter に言語非依存の共通コア `js-interpreter/core` を切り出し（作業ブランチ `feature/interp-core`、JSInterpreter の ADR-015）、Python エンジンはその API だけで動く。方針（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 2（Python エンジン MVP）と Phase 3（フロントエンドの言語非依存化、JSVisualizer の作業ブランチで）。
+**現在のステータス**: Phase 0（スパイク）・Phase 1（共通コアの切り出し）完了（2026-11-24）。Phase 0 の結果は **Go**（[docs/phase0-report.md](docs/phase0-report.md)）、パーサーは Lezer で確定。Phase 1 で JSInterpreter に言語非依存の共通コア `js-interpreter/core` を切り出し（作業ブランチ `feature/interp-core`、JSInterpreter の ADR-015、[docs/phase1-report.md](docs/phase1-report.md)）、Python エンジンはその API だけで動く。方針（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 2（Python エンジン MVP）と Phase 3（フロントエンドの言語非依存化、JSVisualizer の作業ブランチで）。
 
 ## 関連リポジトリ
 
@@ -52,6 +52,7 @@ PyVisualizer/
 ├── docs/
 │   ├── development-plan.md   # 開発計画書（アーキテクチャ・フェーズ・リスク・決定事項）
 │   ├── phase0-report.md      # Phase 0 の報告書（共通化の検証、ビューごとの問題、Lezer の評価）
+│   ├── phase1-report.md      # Phase 1 の報告書（共通コアの中身、Phase 0 の項目の解消、検証の方法）
 │   ├── phase0/               # 報告書のスクリーンショット
 │   └── adr/                  # Architecture Decision Records（ADR-001〜）
 ├── CLAUDE.md                 # このファイル

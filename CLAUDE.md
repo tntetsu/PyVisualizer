@@ -13,11 +13,11 @@
 - **実行時の状態はすべて配列に記録する**（オムニシェント・デバッグ。JSInterpreter と同じ方式）
 - AST のノード型名は、意味が同じ構文には JS（ESTree）の名前を流用し、Python 固有の構文には新しい型を足す
 - 言語ごとの差（ノードの分類・値の表示・エディタ・サンプル）は **LanguageProfile** でフロントエンドに渡す
-- パーサーは `@lezer/python` ＋ 自前の AST 変換を第一候補とし、Phase 0 で評価して確定する
+- パーサーは `@lezer/python` ＋ 自前の AST 変換（インデントの検査と構文エラーの説明は自前）で確定（Phase 0 で評価）
 
 [BhvVisualizer](../BhvVisualizer)（学習ログの収集・分析）と組み合わせて授業で使えるようにすることも目標です。
 
-**現在のステータス**: Phase 0（スパイク）完了（2026-11-24）。結果は **Go**（[docs/phase0-report.md](docs/phase0-report.md)）：JSInterpreter・JSVisualizer を改変せずに Python エンジンを差し込んで全 12 タブが動き、CPython との比較テストもすべて一致。Lezer は採用を推奨（ユーザーの確認待ち）。方針（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 1（共通コアの切り出し、JSInterpreter の作業ブランチで）と Phase 2（Python エンジン MVP）。
+**現在のステータス**: Phase 0（スパイク）完了（2026-11-24）。結果は **Go**（[docs/phase0-report.md](docs/phase0-report.md)）：JSInterpreter・JSVisualizer を改変せずに Python エンジンを差し込んで全 12 タブが動き、CPython との比較テストもすべて一致。パーサーは Lezer で確定。方針（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 1（共通コアの切り出し、JSInterpreter の作業ブランチで）と Phase 2（Python エンジン MVP）。
 
 ## 関連リポジトリ
 

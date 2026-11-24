@@ -4,7 +4,7 @@
 
 ## 1. 結論
 
-**計画どおり進めてよい（Go）。Lezer も採用してよい。**
+**計画どおり進めてよい（Go）。Lezer も採用してよい**（2026-11-24 に Lezer で確定）。
 
 - **JSInterpreter と JSVisualizer を 1 行も改変せずに**、Python エンジンを差し込んだ JSVisualizer が動いた。差し込みは、esbuild で `debugger-adapter.js` の import 1 行を Python エンジンに向け替えただけ（[scripts/build-spike.mjs](../scripts/build-spike.mjs)）
 - Python 版のサンプル 15 本 × 全 12 タブ × 2 時点（途中・最後）で、ブラウザのエラーは 0 件。Python の意味論は **CPython との比較テスト 28 件がすべて一致**

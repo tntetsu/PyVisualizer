@@ -68,7 +68,7 @@ Python のコードを JS の AST に変換して JSInterpreter の評価器で�
    - `repr(value)`：表示用の文字列（Python は `None`, `True`, `'abc'`, `(1, 2)`, `{'a': 1}`）
    - エディタの言語モード、サンプル、エラー種別、ビューの有効・無効（DOM モードは JS のみ、など）
 
-### 2.2 パーサーの選定：Lezer（`@lezer/python`）を推奨
+### 2.2 パーサーの選定：Lezer（`@lezer/python`）に確定
 
 | 候補 | 評価 |
 |---|---|
@@ -118,7 +118,7 @@ Python のコードを JS の AST に変換して JSInterpreter の評価器で�
 
 | Phase | 内容 | 主な成果物 | 完了条件 |
 |---|---|---|---|
-| **0. スパイク**（どこまで共通化できるかの見極め）✅ 2026-11-24 完了 | Lezer→AST 変換と評価器を PyVisualizer 内で作り、JSInterpreter・JSVisualizer を改変せずに組み合わせて全ビューを確認した | [phase0-report.md](phase0-report.md) | **Go**：2.1 の契約で進めてよい。Lezer は採用を推奨 |
+| **0. スパイク**（どこまで共通化できるかの見極め）✅ 2026-11-24 完了 | Lezer→AST 変換と評価器を PyVisualizer 内で作り、JSInterpreter・JSVisualizer を改変せずに組み合わせて全ビューを確認した | [phase0-report.md](phase0-report.md) | **Go**：2.1 の契約で進めてよい。Lezer で確定 |
 | **1. 共通コアの切り出し**（JSInterpreter） | `Recorder`・ステップ操作・`Environment` 基底・`deepClone` のフック・humanStep のノード分類表を `src/core/` へ移す。JS の挙動は一切変えない。Phase 0 で見つかった項目（[phase0-report.md](phase0-report.md) 3.2 節 a〜f：エンジンを外から渡すデバッガー、出力の断片での記録、`for x in` のループ変数への代入の記録など）を含む | `js-interpreter/core` | 既存の 252 テスト＋JSVisualizer の `samples.test.js`・verify スクリプトがすべて通る |
 | **2. Python エンジン MVP**（PyVisualizer） | 対象の構文（4.1節）、組み込み関数、Python の例外名（`ZeroDivisionError`, `IndexError`…）と日本語メッセージ、`JSDebugger` と同じ API を持つ `PyDebugger` | `src/engine/`、単体テスト、CPython との比較テスト | 4.3 節の比較テストが通る |
 | **3. フロントエンドの言語非依存化**（JSVisualizer） | nodeType 名の直接参照を LanguageProfile の分類に置き換え、値の判別・表示を `valueModel`/`repr` 経由にし、`debugger-adapter.js` でエンジンを差し込めるようにする | JS 用の LanguageProfile | JS 版の見た目・挙動が変わらない（既存テスト＋Playwright のスクリーンショット比較） |
@@ -163,7 +163,7 @@ Python の LEGB 規則に従う。関数本体の中で代入される名前は�
 | # | 論点 | 決定 |
 |---|---|---|
 | 1 | リポジトリ構成 | 2.4 節の案で進める（エンジンは別リポジトリ、フロントエンドは JSVisualizer のものを共有、サイトは別）。[ADR-001](adr/ADR-001-repository-structure.md) |
-| 2 | パーサー | Lezer（`@lezer/python`）で進め、Phase 0 で評価してから確定する → Phase 0 の評価で採用を推奨（[phase0-report.md](phase0-report.md) 4 節、確認待ち） |
+| 2 | パーサー | Lezer（`@lezer/python`）で進め、Phase 0 で評価してから確定する → **Lezer で確定**（2026-11-24。Phase 0 の評価は [phase0-report.md](phase0-report.md) 4 節） |
 | 3 | JSVisualizer・JSInterpreter への変更をマージする時期 | **学期後（2027年2月以降）**。それまではブランチで進める（6.1 節） |
 | 4 | MVP の対象範囲 | 4.1 節の範囲。現時点で授業で使う予定はない |
 

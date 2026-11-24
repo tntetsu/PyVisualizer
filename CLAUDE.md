@@ -17,13 +17,13 @@
 
 [BhvVisualizer](../BhvVisualizer)（学習ログの収集・分析）と組み合わせて授業で使えるようにすることも目標です。
 
-**現在のステータス**: Phase 0（スパイク）完了（2026-11-24）。結果は **Go**（[docs/phase0-report.md](docs/phase0-report.md)）：JSInterpreter・JSVisualizer を改変せずに Python エンジンを差し込んで全 12 タブが動き、CPython との比較テストもすべて一致。パーサーは Lezer で確定。方針（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 1（共通コアの切り出し、JSInterpreter の作業ブランチで）と Phase 2（Python エンジン MVP）。
+**現在のステータス**: Phase 0（スパイク）・Phase 1（共通コアの切り出し）完了（2026-11-24）。Phase 0 の結果は **Go**（[docs/phase0-report.md](docs/phase0-report.md)）、パーサーは Lezer で確定。Phase 1 で JSInterpreter に言語非依存の共通コア `js-interpreter/core` を切り出し（作業ブランチ `feature/interp-core`、JSInterpreter の ADR-015）、Python エンジンはその API だけで動く。方針（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 2（Python エンジン MVP）と Phase 3（フロントエンドの言語非依存化、JSVisualizer の作業ブランチで）。
 
 ## 関連リポジトリ
 
 | リポジトリ | 役割 | PyVisualizer との関係 |
 |---|---|---|
-| [../JSInterpreter](../JSInterpreter) | JS インタプリタ（`JSDebugger`・`Recorder`） | 共通コア（Recorder・ステップ操作・Environment 基底）をここから切り出して共有する（Phase 1） |
+| [../JSInterpreter](../JSInterpreter) | JS インタプリタ（`JSDebugger`・`Recorder`） | 共通コア `js-interpreter/core` をここに切り出して共有する（Phase 1 完了。作業ブランチ `feature/interp-core`、worktree `../JSInterpreter-core`） |
 | [../JSVisualizer](../JSVisualizer) | 可視化フロントエンド（ビュー 20 種前後） | フロントエンドを言語非依存にして共有する（Phase 3） |
 | [../BhvVisualizer](../BhvVisualizer) | 学習ログ収集・分析（Firebase） | `codes.language` を追加して Python のコードも扱う（Phase 6） |
 
@@ -33,19 +33,21 @@
 PyVisualizer/
 ├── src/engine/               # Python エンジン（Phase 0 のスパイクで作成、Phase 2 の土台）
 │   ├── parse.js              # Lezer の木 → AST、インデントの検査、構文エラーの日本語説明
-│   ├── interpreter.js        # 評価器（LEGB スコープ・Python の演算）。JSInterpreter の Recorder 等を import して使う
+│   ├── interpreter.js        # 評価器（LEGB スコープ・Python の演算）。js-interpreter/core の Recorder・Scope 等を使う
 │   ├── builtins.js           # 組み込み関数・list/str/dict のメソッド・f 文字列の書式指定
 │   ├── values.js             # 値の表現（PyFloat・tuple・dict・PyRange）、repr/str、比較、反復
-│   └── py-debugger.js        # PyDebugger（JSDebugger と同じ API。debugger-adapter.js が使う名前でも export）
+│   └── py-debugger.js        # PyDebugger（TraceDebugger の派生、PY_NODE_CATEGORIES。debugger-adapter.js が使う名前でも export）
 ├── samples/                  # Python のサンプル（JSVisualizer の組み込みサンプルに対応）
 ├── tests/
 │   ├── oracle.test.js        # CPython（python3）を正解とした比較（samples/ と tests/cases/）
 │   ├── parse.test.js         # 構文エラーの検出と説明、AST の形
 │   ├── trace-builder.test.js # トレースを JSVisualizer の TraceBuilder に通す
+│   ├── debugger.test.js      # PyDebugger と共通コアの組み合わせ（LoopBinding・tuple のクローン・出力の断片）
 │   └── cases/                # 意味論・例外の比較用の Python プログラム
 ├── scripts/
 │   ├── build-spike.mjs       # JSVisualizer のフロントエンドに Python エンジンを差し込んで web/ にビルド
-│   └── capture-spike.mjs     # 全サンプル × 全タブのスクリーンショットとブラウザのエラーを収集
+│   ├── capture-spike.mjs     # 全サンプル × 全タブのスクリーンショットとブラウザのエラーを収集
+│   └── compare-js-core.mjs   # JSInterpreter の master と作業ブランチで JS のトレースを 1 件ずつ比べる
 ├── web/                      # ビルド出力（gitignore 対象）
 ├── docs/
 │   ├── development-plan.md   # 開発計画書（アーキテクチャ・フェーズ・リスク・決定事項）
@@ -60,11 +62,14 @@ PyVisualizer/
 ## コマンド
 
 ```bash
-npm install                            # 兄弟ディレクトリに ../JSInterpreter・../JSVisualizer が必要（file: 依存）
+npm install                            # 兄弟ディレクトリに ../JSInterpreter-core・../JSVisualizer が必要（file: 依存。下記）
 npm test                               # 全テスト（node:test。CPython との比較に python3 が必要）
 node scripts/build-spike.mjs --serve   # http://127.0.0.1:8123/?exercise=/samples/python.json で確認
 node scripts/capture-spike.mjs <出力先> [サンプルid...]   # スクリーンショットの収集
+node scripts/compare-js-core.mjs       # JSInterpreter の master と作業ブランチで JS のトレースが一致するか
 ```
+
+> **依存先**：`js-interpreter` は JSInterpreter の作業ブランチ `feature/interp-core` を指す（`file:../JSInterpreter-core`。`git -C ../JSInterpreter worktree add ../JSInterpreter-core feature/interp-core` で作る）。共通コア（`js-interpreter/core`）は main（master）にはまだない（学期後にマージ）。`js-visualizer` は `file:../JSVisualizer`（main のまま。Phase 3 で作業ブランチに切り替える）。
 
 > テストは Jest ではなく Node 標準の `node:test` を使う（ES modules のまま追加の設定なしで動くため）。
 

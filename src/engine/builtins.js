@@ -110,7 +110,7 @@ export const BUILTINS = {
     const sep = kwargs.sep ?? ' ';
     const end = kwargs.end ?? '\n';
     const text = args.map(str).join(sep === null ? ' ' : sep) + (end === null ? '\n' : end);
-    ctx.rt.recorder?.write(text);
+    ctx.rt.recorder?.write(text);   // 改行のない出力も断片として記録する（joinConsoleLines で行にまとめられる）
     return null;
   }),
   len: def('len', (args, _k, ctx) => {

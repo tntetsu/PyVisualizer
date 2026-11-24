@@ -56,6 +56,19 @@ export function floatRepr(v) {
 
 export const makeFloat = (v) => new PyFloat(v);
 
+/**
+ * スナップショット用のクローンの hook（共通コアの deepClone に渡す）。
+ * tuple の印（__pytuple__）を保ったままクローンする。PyFloat・PyRange は不変なので既定どおり参照を保持する。
+ */
+export function pyCloneHook(v, clone, seen) {
+  if (!Array.isArray(v) || v.__pytuple__ !== true) return undefined;
+  const c = [];
+  seen.set(v, c);
+  for (const x of v) c.push(clone(x));
+  Object.defineProperty(c, '__pytuple__', { value: true, enumerable: false });
+  return Object.freeze(c);
+}
+
 export function makeTuple(items) {
   const t = [...items];
   Object.defineProperty(t, '__pytuple__', { value: true, enumerable: false });

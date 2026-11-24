@@ -1,40 +1,35 @@
 /**
  * interpreter.js — Python 評価器（Phase 0 スパイク）
  *
- * JSInterpreter の Recorder・制御シグナル・Environment を「改変せずに」import して使い、
+ * JSInterpreter の共通コア（js-interpreter/core：Recorder・制御シグナル・Scope・クローン）を使い、
  * Python の意味論（スコープ・演算・真偽・反復）だけをここで実装する。
  * 対象範囲は docs/development-plan.md 4.1 節の MVP のうち、スパイクで確かめたい部分。
  */
 import {
-  Recorder, ReturnSignal, BreakSignal, ContinueSignal, ThrowSignal,
-} from 'js-interpreter/src/interpreter/interpreter.js';
-import { Environment, deepClone } from 'js-interpreter/src/interpreter/environment.js';
+  Recorder, Scope, createCloner, ReturnSignal, BreakSignal, ContinueSignal, ThrowSignal,
+} from 'js-interpreter/core';
 import {
   PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet, dictKey,
   isFloat, isInt, isBool, isNum, isStr, isTuple, isList, isDict, num, typeName,
-  truthy, repr, str, pyEq, pyCmp, iterate, contains,
+  truthy, repr, str, pyEq, pyCmp, iterate, contains, pyCloneHook,
 } from './values.js';
 import { BUILTINS, getAttr, formatValue } from './builtins.js';
 
 const MAX_RECURSION = 1000;
 
-/** print の出力を JSInterpreter の consoleLogs（1 行 1 件）に合わせる記録器。端末への転送はしない */
-export class PyRecorder extends Recorder {
-  constructor(maxSteps) {
-    super(maxSteps);
-    this.pendingOut = '';
-  }
-  captureLog(level, args) {
-    this.consoleLogs.push({ atIndex: this.trace.length, level, text: args.join(' ') });
-  }
-  /** print の出力を受け取る。改行までたまったら 1 行として記録する（docs/phase0-report.md: 改行なしの print） */
-  write(text) {
-    const lines = (this.pendingOut + text).split('\n');
-    this.pendingOut = lines.pop();
-    for (const l of lines) this.captureLog('log', [l]);
-  }
-  flush() {
-    if (this.pendingOut !== '') { this.captureLog('log', [this.pendingOut]); this.pendingOut = ''; }
+/** スナップショット用のクローン（tuple の印を保つ） */
+export const cloneValue = createCloner(pyCloneHook);
+
+/** Python 用の Recorder：値のクローンに cloneValue を使う。print は recorder.write() で出力の断片として記録する */
+export function createRecorder(maxSteps = 0) {
+  return new Recorder(maxSteps, { clone: cloneValue });
+}
+
+/** Python のスコープ（関数の呼び出しごと・モジュール）。pyScope に静的に集めたローカル・global・nonlocal を持つ */
+export class PyScope extends Scope {
+  constructor(parent = null, kind = 'function', pyScope = null) {
+    super(parent, kind);
+    this.pyScope = pyScope;
   }
 }
 
@@ -295,12 +290,11 @@ export function callFunction(callee, args, kwargs, rt, depth, callDepth, loc) {
   if (callDepth + 1 > MAX_RECURSION) {
     throw new PyError('RecursionError', `関数の呼び出しが ${MAX_RECURSION} 段を超えました（再帰が止まっていない可能性があります）`, loc);
   }
-  const env = new Environment(callee.closure, 'function');
-  env.pyScope = callee.scope;
+  const env = new PyScope(callee.closure, 'function', callee.scope);
   const vals = bindArgs(callee, args, kwargs, env, loc);
   const recorder = rt.recorder;
   if (recorder) {
-    recorder.pushFrame({ name: callee.name, loc: loc || { line: 0, column: 0 }, args: vals.map(a => deepClone(a)) }, env);
+    recorder.pushFrame({ name: callee.name, loc: loc || { line: 0, column: 0 }, args: vals.map(a => cloneValue(a)) }, env);
   }
   let result;
   try {
@@ -353,8 +347,8 @@ const isSignal = (r) => r instanceof ReturnSignal || r instanceof BreakSignal ||
 
 /**
  * @param {object} node
- * @param {Environment} env
- * @param {{recorder: PyRecorder|null}} rt
+ * @param {PyScope} env
+ * @param {{recorder: Recorder|null}} rt
  */
 export function evaluate(node, env, rt, depth = 0, callDepth = 0) {
   if (!node) return undefined;
@@ -398,8 +392,11 @@ function _eval(node, env, rt, depth, callDepth) {
 
     case 'ForOfStatement': {
       const iterable = ev(node.right);
+      // 各回のループ変数への代入を LoopBinding として記録する（humanStep が各回で止まる。phase0-report 3.2 節 f）
+      const binding = { type: 'LoopBinding', loc: node.left.loc, end: node.left.end };
       for (const item of iterate(iterable, node.right.loc)) {
-        assignTarget(node.left, item, env, rt, d, callDepth);
+        const bind = () => { assignTarget(node.left, item, env, rt, d + 1, callDepth); return item; };
+        if (rt.recorder) rt.recorder.record(binding, env, d, callDepth, bind); else bind();
         const r = ev(node.body);
         if (r instanceof BreakSignal) break;
         if (r instanceof ContinueSignal) continue;

@@ -1,18 +1,33 @@
 /**
- * py-debugger.js — PyDebugger（Phase 0 スパイク）
+ * py-debugger.js — PyDebugger
  *
- * JSDebugger と同じ API を持つ。プログラムを最後まで実行してトレースを作ったあと、
- * JSDebugger.fromTrace() でインスタンスを作るので、ステップ操作（stepIn/Over/Out/Back・humanStep・continue）は
- * JSInterpreter のものを無改造で使う。
+ * 共通コアの TraceDebugger の派生クラス。プログラムを最後まで実行してトレースを作り、ステップ操作
+ * （stepIn/Over/Out/Back・humanStep・continue）は TraceDebugger のものを使う。humanStep の停止点は
+ * PY_NODE_CATEGORIES で決まる。
  *
  * JSVisualizer の debugger-adapter.js は `import { JSDebugger, ExecutionError } from '../../web/interpreter.bundle.js'`
- * しているので、スパイクのビルドではこのモジュールをその名前で差し込む（scripts/build-spike.mjs）。
+ * しているので、その名前でも export する（scripts/build-spike.mjs が差し込む）。
  */
-import { JSDebugger, ExecutionError } from 'js-interpreter/src/interpreter/debugger.js';
-import { Environment } from 'js-interpreter/src/interpreter/environment.js';
+import { TraceDebugger, ExecutionError, finalizePartialTrace } from 'js-interpreter/core';
 import { parse } from './parse.js';
-import { evaluate, PyRecorder } from './interpreter.js';
+import { evaluate, createRecorder, PyScope } from './interpreter.js';
 import { PyError } from './values.js';
+
+/**
+ * Python のノード型の役割（共通コアの NodeCategories）
+ * - for x in ... の各回のループ変数への代入（LoopBinding）で止まる
+ * - while は毎回の条件式で止まる（condLoop）。C 形式の for はないので forLoop は空
+ */
+export const PY_NODE_CATEGORIES = Object.freeze({
+  stopOnExit: ['AssignmentExpression', 'ReturnStatement', 'LoopBinding'],
+  call:       ['CallExpression'],
+  block:      ['BlockStatement'],
+  branch:     ['IfStatement', 'ConditionalExpression'],
+  condLoop:   ['WhileStatement'],
+  forLoop:    [],
+  forInit:    [],
+  exprStmt:   ['ExpressionStatement'],
+});
 
 /**
  * Python のソースを実行してトレースを作る。
@@ -21,41 +36,32 @@ import { PyError } from './values.js';
  */
 export function runPython(source, { maxSteps = 100_000 } = {}) {
   const ast = parse(source);
-  const recorder = new PyRecorder(maxSteps);
-  const env = new Environment(null, 'global');
+  const recorder = createRecorder(maxSteps);
+  const env = new PyScope(null, 'global');
   try {
     evaluate(ast, env, { recorder }, 0, 0);
-    recorder.flush();
   } catch (e) {
-    recorder.flush();
     // ホストの JS のスタックがあふれた場合は、Python の RecursionError として扱う
-    // （Node の既定のスタックで約 290 段。CPython の上限 1000 段より浅い。docs/phase0-report.md）
+    // （Node の既定のスタックで約 290 段。CPython の上限 1000 段より浅い。docs/phase0-report.md 3.2 節 g）
     const err = e instanceof RangeError && /call stack|too much recursion/i.test(e.message)
       ? new PyError('RecursionError', '関数の呼び出しが深くなりすぎたため停止しました（再帰が止まっていない可能性があります）')
       : e;
-    // JSDebugger と同じく、末尾の閉じていない enter を除き、外側の matchIdx をトレースの末尾にそろえる
-    const tr = recorder.trace;
-    let tail = tr.length - 1;
-    while (tail >= 0 && tr[tail].matchIdx === -1) tail--;
-    tr.length = tail + 1;
-    for (const ev of tr) if (ev.matchIdx === -1) ev.matchIdx = tr.length;
-    throw new ExecutionError(err, source, tr, ast, recorder.consoleLogs);
+    throw new ExecutionError(err, source, finalizePartialTrace(recorder.trace), ast, recorder.consoleLogs);
   }
   return { ast, trace: recorder.trace, consoleLogs: recorder.consoleLogs };
 }
 
-export class PyDebugger extends JSDebugger {
+export class PyDebugger extends TraceDebugger {
+  static nodeCategories = PY_NODE_CATEGORIES;
+
   /**
    * @param {string} source
    * @param {{maxSteps?: number}} [options]
    */
-  // eslint-disable-next-line constructor-super
   constructor(source, options = {}) {
-    const { ast, trace, consoleLogs } = runPython(source, options);
-    const inst = JSDebugger.fromTrace(source, trace, ast, consoleLogs);
-    inst.maxSteps = options.maxSteps ?? 100_000;
-    Object.setPrototypeOf(inst, new.target.prototype);
-    return inst; // 派生クラスのコンストラクターは super() を呼ばずにオブジェクトを返せる
+    const maxSteps = options.maxSteps ?? 100_000;
+    const { ast, trace, consoleLogs } = runPython(source, { maxSteps });
+    super({ source, trace, ast, consoleLogs, maxSteps });
   }
 }
 

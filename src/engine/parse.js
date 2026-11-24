@@ -273,10 +273,13 @@ export function parse(src) {
       case 'AssignStatement': {
         if (c.some(k => k.name === 'TypeDef')) unsupported('型注釈', n);
         const groups = splitBy(c, ['AssignOp']);
-        if (groups.length !== 2) unsupported('「a = b = 1」のような連続代入', n);
-        const left = exprList(groups[0]);
-        const right = exprList(groups[1]);
-        const assign = mk('AssignmentExpression', n.from, n.to, { operator: '=', left, right });
+        // 「a = b = 0」は、値（最後の項）を 1 回だけ評価して、左の代入先から順に代入する。
+        // ESTree の形を保つため、最初の代入先を left、残りを extraTargets に入れる
+        const targets = groups.slice(0, -1).map(exprList);
+        const right = exprList(groups[groups.length - 1]);
+        const assign = mk('AssignmentExpression', n.from, n.to, {
+          operator: '=', left: targets[0], right, ...(targets.length > 1 ? { extraTargets: targets.slice(1) } : {}),
+        });
         return [mk('ExpressionStatement', n.from, n.to, { expression: assign })];
       }
 
@@ -425,9 +428,15 @@ export function parse(src) {
       case 'Number': {
         const raw = text(n).replace(/_/g, '');
         if (/[jJ]$/.test(raw)) unsupported('複素数', n);
-        if (/^0[xob]/i.test(raw)) return mk('Literal', n.from, n.to, { value: Number(raw), raw: text(n) });
-        const isFloat = /[.eE]/.test(raw);
-        return mk('Literal', n.from, n.to, { value: Number(raw), raw: text(n), pyKind: isFloat ? 'float' : 'int' });
+        const isFloat = !/^0[xob]/i.test(raw) && /[.eE]/.test(raw);
+        if (!isFloat && /^0\d/.test(raw) && /[1-9]/.test(raw)) {
+          const p = pm.loc(n.from);
+          throw new PySyntaxError('0 で始まる整数は書けません（8 進数は 0o を付けます）', p.line, p.column);
+        }
+        const value = Number(raw);   // 0x・0o・0b の接頭辞も Number が解釈する
+        // 安全な整数の範囲を超える int は、文字列のまま持たせて評価器で BigInt にする（AST は JSON にできる形に保つ）
+        const bigint = !isFloat && !Number.isSafeInteger(value) ? BigInt(raw).toString() : undefined;
+        return mk('Literal', n.from, n.to, { value, raw: text(n), pyKind: isFloat ? 'float' : 'int', ...(bigint ? { bigint } : {}) });
       }
       case 'String':
       case 'ContinuedString':

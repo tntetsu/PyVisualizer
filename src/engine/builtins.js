@@ -5,7 +5,8 @@
  * 名前の解決の最後（LEGB の B）でだけ参照するので、変数ビューに print や len が並ぶことはない。
  */
 import {
-  PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet,
+  PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet, dictGet, dictHas, dictDelete, dictEntries,
+  intOp, normInt,
   isFloat, isInt, isBool, isNum, isStr, isTuple, isList, isDict, num, typeName,
   truthy, repr, str, pyEq, pyCmp, iterate,
 } from './values.js';
@@ -19,6 +20,7 @@ function argCount(name, args, min, max, loc) {
   }
 }
 
+/** 位置や個数に使う int を JS の number で取り出す（大きすぎる値は近似になるが、範囲外として扱われる） */
 function toInt(v, loc, what = 'int') {
   if (isInt(v) || isBool(v)) return num(v);
   throw new PyError('TypeError', `${what} には整数が必要です（${typeName(v)} が渡されました）`, loc);
@@ -87,7 +89,7 @@ export function formatValue(v, spec, loc) {
     s = x.toFixed(prec === undefined ? 6 : Number(prec)) + (type === '%' ? '%' : '');
   } else if (type === 'd') {
     if (!(isInt(v) || isBool(v))) throw new PyError('ValueError', `書式「d」は整数にしか使えません`, loc);
-    s = String(num(v));
+    s = String(isBool(v) ? num(v) : v);   // BigInt もそのまま桁を出す
   } else if (type === 'e') {
     s = num(v).toExponential(prec === undefined ? 6 : Number(prec)).replace(/e([+-])(\d)$/, 'e$10$2');
   } else {
@@ -117,7 +119,7 @@ export const BUILTINS = {
     argCount('len', args, 1, 1, ctx.loc);
     const v = args[0];
     if (isStr(v) || Array.isArray(v)) return v.length;
-    if (isDict(v)) return Object.keys(v).length;
+    if (isDict(v)) return v.keys.length;
     if (v instanceof PyRange) return v.length;
     throw new PyError('TypeError', `${typeName(v)} には len() を使えません`, ctx.loc);
   }),
@@ -131,19 +133,18 @@ export const BUILTINS = {
   abs: def('abs', (args, _k, ctx) => {
     argCount('abs', args, 1, 1, ctx.loc);
     if (!isNum(args[0])) throw new PyError('TypeError', `${typeName(args[0])} には abs() を使えません`, ctx.loc);
-    return isFloat(args[0]) ? makeFloat(Math.abs(args[0].v)) : Math.abs(num(args[0]));
+    return isFloat(args[0]) ? makeFloat(Math.abs(args[0].v)) : (num(args[0]) < 0 ? intOp('-', 0, args[0]) : intOp('+', 0, args[0]));
   }),
   min: minMax('min', -1),
   max: minMax('max', 1),
   sum: def('sum', (args, _k, ctx) => {
     argCount('sum', args, 1, 2, ctx.loc);
-    let acc = args[1] ?? 0, isF = isFloat(acc);
-    let total = num(acc);
+    let acc = args[1] ?? 0;
     for (const v of iterate(args[0], ctx.loc)) {
       if (!isNum(v)) throw new PyError('TypeError', `sum() は数値の並びにしか使えません（${typeName(v)} が含まれています）`, ctx.loc);
-      total += num(v); isF = isF || isFloat(v);
+      acc = isFloat(acc) || isFloat(v) ? makeFloat(num(acc) + num(v)) : intOp('+', acc, v);
     }
-    return isF ? makeFloat(total) : total;
+    return acc;
   }),
   sorted: def('sorted', (args, kwargs, ctx) => {
     argCount('sorted', args, 1, 1, ctx.loc);
@@ -165,9 +166,13 @@ export const BUILTINS = {
   int: def('int', (args, _k, ctx) => {
     if (!args.length) return 0;
     const v = args[0];
-    if (isInt(v) || isBool(v)) return num(v);
-    if (isFloat(v)) return Math.trunc(v.v);
-    if (isStr(v) && /^\s*[+-]?\d+\s*$/.test(v.replace(/_/g, ''))) return parseInt(v.replace(/_/g, ''), 10);
+    if (isBool(v)) return num(v);
+    if (isInt(v)) return v;
+    if (isFloat(v)) {
+      if (!Number.isFinite(v.v)) throw new PyError('ValueError', `${repr(v)} は整数に変換できません`, ctx.loc);
+      return normInt(BigInt(Math.trunc(v.v)));
+    }
+    if (isStr(v) && /^\s*[+-]?\d+\s*$/.test(v.replace(/_/g, ''))) return normInt(BigInt(v.replace(/_/g, '').trim()));
     throw new PyError('ValueError', `${repr(v)} は整数に変換できません`, ctx.loc);
   }),
   float: def('float', (args, _k, ctx) => {
@@ -179,11 +184,26 @@ export const BUILTINS = {
   }),
   list:  def('list', (args, _k, ctx) => (args.length ? [...iterate(args[0], ctx.loc)] : [])),
   tuple: def('tuple', (args, _k, ctx) => makeTuple(args.length ? [...iterate(args[0], ctx.loc)] : [])),
-  dict:  def('dict', (args, kwargs) => makeDict(Object.entries(kwargs))),
+  dict:  def('dict', (args, kwargs, ctx) => {
+    const d = makeDict();
+    if (args.length) {
+      if (isDict(args[0])) dictEntries(args[0]).forEach(([k, v]) => dictSet(d, k, v, ctx.loc));
+      else {
+        for (const pair of iterate(args[0], ctx.loc)) {
+          const kv = [...iterate(pair, ctx.loc)];
+          if (kv.length !== 2) throw new PyError('ValueError', 'dict() の要素は (キー, 値) の 2 つ組でなければなりません', ctx.loc);
+          dictSet(d, kv[0], kv[1], ctx.loc);
+        }
+      }
+    }
+    for (const [k, v] of Object.entries(kwargs)) dictSet(d, k, v, ctx.loc);
+    return d;
+  }),
   round: def('round', (args, _k, ctx) => {
     argCount('round', args, 1, 2, ctx.loc);
+    if ((isInt(args[0]) || isBool(args[0])) && (args.length === 1 || args[1] === null)) return intOp('+', 0, args[0]);
     const x = num(args[0]);
-    if (args.length === 1 || args[1] === null) return roundHalfEven(x);
+    if (args.length === 1 || args[1] === null) return normInt(roundHalfEven(x));
     const r = roundDigits(x, toInt(args[1], ctx.loc));
     return isInt(args[0]) ? r : makeFloat(r);
   }),
@@ -256,16 +276,26 @@ const STR_METHODS = {
 };
 
 const DICT_METHODS = {
-  get: (d, [k, dflt = null]) => (isStr(k) && Object.prototype.hasOwnProperty.call(d, k) ? d[k] : dflt),
-  keys: (d) => Object.keys(d),
-  values: (d) => Object.values(d),
-  items: (d) => Object.keys(d).map(k => makeTuple([k, d[k]])),
+  get: (d, [k, dflt = null], _k, ctx) => dictGet(d, k, ctx.loc, dflt),
+  keys: (d) => [...d.keys],
+  values: (d) => [...d.values],
+  items: (d) => dictEntries(d).map(kv => makeTuple(kv)),
   pop: (d, [k, ...rest], _k, ctx) => {
-    if (isStr(k) && Object.prototype.hasOwnProperty.call(d, k)) { const v = d[k]; delete d[k]; return v; }
+    if (dictHas(d, k, ctx.loc)) return dictDelete(d, k, ctx.loc);
     if (rest.length) return rest[0];
     throw new PyError('KeyError', `辞書にキー ${repr(k)} がありません`, ctx.loc);
   },
-  update: (d, [other]) => { for (const k of Object.keys(other)) dictSet(d, k, other[k]); return null; },
+  setdefault: (d, [k, dflt = null], _k, ctx) => {
+    if (!dictHas(d, k, ctx.loc)) dictSet(d, k, dflt, ctx.loc);
+    return dictGet(d, k, ctx.loc);
+  },
+  update: (d, [other], _k, ctx) => {
+    if (!isDict(other)) throw new PyError('NotImplemented', 'update() には辞書を渡してください', ctx.loc);
+    dictEntries(other).forEach(([k, v]) => dictSet(d, k, v, ctx.loc));
+    return null;
+  },
+  copy: (d) => makeDict(dictEntries(d)),
+  clear: (d) => { d.keys.length = 0; d.values.length = 0; d._index = null; return null; },
 };
 
 function escRe(s) { return s.replace(/[\]\\^-]/g, '\\$&'); }

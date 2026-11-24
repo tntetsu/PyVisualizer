@@ -9,7 +9,7 @@ import {
   Recorder, Scope, createCloner, ReturnSignal, BreakSignal, ContinueSignal, ThrowSignal,
 } from 'js-interpreter/core';
 import {
-  PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet, dictKey,
+  PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet, dictGet, intOp, normInt, big,
   isFloat, isInt, isBool, isNum, isStr, isTuple, isList, isDict, num, typeName,
   truthy, repr, str, pyEq, pyCmp, iterate, contains, pyCloneHook,
 } from './values.js';
@@ -55,7 +55,10 @@ function analyzeScope(fnNode) {
         n.names.forEach(x => set.add(x));
         return;
       }
-      case 'AssignmentExpression': addTarget(n.left); walk(n.right); if (n.left.type !== 'Identifier') walk(n.left); return;
+      case 'AssignmentExpression':
+        for (const t of [n.left, ...(n.extraTargets ?? [])]) { addTarget(t); if (t.type !== 'Identifier') walk(t); }
+        walk(n.right);
+        return;
       case 'ForOfStatement': addTarget(n.left); walk(n.right); walk(n.body); return;
     }
     for (const k of Object.keys(n)) if (k !== 'loc' && k !== 'end' && k !== 'range') walk(n[k]);
@@ -104,23 +107,30 @@ function assignName(name, value, env, loc) {
 
 const zeroDiv = (loc) => new PyError('ZeroDivisionError', '0 で割ることはできません', loc);
 
-function arith(a, b, f) {
-  const r = f(num(a), num(b));
-  return isFloat(a) || isFloat(b) ? makeFloat(r) : r;
-}
+/** float を含む演算：JS の number で計算して float にする */
+const fl = (a, b, f) => makeFloat(f(num(a), num(b)));
+/** int（bool を含む）どうしか */
+const bothInt = (a, b) => (isInt(a) || isBool(a)) && (isInt(b) || isBool(b));
+const isZero = (v) => num(v) === 0;
 
 export function binop(op, a, b, loc) {
   const nums = isNum(a) && isNum(b);
+  const ints = bothInt(a, b);
   switch (op) {
     case '+':
-      if (nums) return arith(a, b, (x, y) => x + y);
+      if (ints) return intOp('+', a, b);
+      if (nums) return fl(a, b, (x, y) => x + y);
       if (isStr(a) && isStr(b)) return a + b;
       if (isList(a) && isList(b)) return [...a, ...b];
       if (isTuple(a) && isTuple(b)) return makeTuple([...a, ...b]);
       break;
-    case '-': if (nums) return arith(a, b, (x, y) => x - y); break;
+    case '-':
+      if (ints) return intOp('-', a, b);
+      if (nums) return fl(a, b, (x, y) => x - y);
+      break;
     case '*':
-      if (nums) return arith(a, b, (x, y) => x * y);
+      if (ints) return intOp('*', a, b);
+      if (nums) return fl(a, b, (x, y) => x * y);
       for (const [s, n] of [[a, b], [b, a]]) {
         if ((isInt(n) || isBool(n)) && (isStr(s) || Array.isArray(s))) {
           const k = Math.max(0, num(n));
@@ -132,26 +142,40 @@ export function binop(op, a, b, loc) {
       }
       break;
     case '/':
-      if (nums) { if (num(b) === 0) throw zeroDiv(loc); return makeFloat(num(a) / num(b)); }
+      if (nums) {
+        if (isZero(b)) throw zeroDiv(loc);
+        // int どうしの割り算は、大きな整数でも正確な商に近い値になるよう BigInt で割ってから小数部を足す
+        if (ints && (typeof a === 'bigint' || typeof b === 'bigint')) {
+          const A = big(a), B = big(b), q = A / B;
+          return makeFloat(Number(q) + Number(A - q * B) / Number(B));
+        }
+        return makeFloat(num(a) / num(b));
+      }
       break;
     case '//':
-      if (nums) { if (num(b) === 0) throw zeroDiv(loc); return arith(a, b, (x, y) => Math.floor(x / y)); }
+      if (nums) {
+        if (isZero(b)) throw zeroDiv(loc);
+        return ints ? intOp('//', a, b) : fl(a, b, (x, y) => Math.floor(x / y));
+      }
       break;
     case '%':
       if (isStr(a)) throw new PyError('NotImplemented', '文字列の % 書式はまだ対応していません', loc);
-      if (nums) { if (num(b) === 0) throw zeroDiv(loc); return arith(a, b, (x, y) => x - y * Math.floor(x / y)); }
+      if (nums) {
+        if (isZero(b)) throw zeroDiv(loc);
+        return ints ? intOp('%', a, b) : fl(a, b, (x, y) => x - y * Math.floor(x / y));
+      }
       break;
     case '**':
       if (nums) {
-        if (num(a) === 0 && num(b) < 0) throw zeroDiv(loc);
-        if (!isFloat(a) && !isFloat(b) && num(b) < 0) return makeFloat(num(a) ** num(b));
-        return arith(a, b, (x, y) => x ** y);
+        if (isZero(a) && num(b) < 0) throw zeroDiv(loc);
+        if (ints) return num(b) < 0 ? makeFloat(num(a) ** num(b)) : intOp('**', a, b);
+        return fl(a, b, (x, y) => x ** y);
       }
       break;
     case '&': case '|': case '^': case '<<': case '>>':
-      if ((isInt(a) || isBool(a)) && (isInt(b) || isBool(b))) {
-        const x = num(a), y = num(b);
-        return { '&': x & y, '|': x | y, '^': x ^ y, '<<': x << y, '>>': x >> y }[op];
+      if (ints) {
+        if ((op === '<<' || op === '>>') && num(b) < 0) throw new PyError('ValueError', 'シフトする量に負の数は使えません', loc);
+        return intOp(op, a, b);
       }
       break;
   }
@@ -189,11 +213,7 @@ function normIndex(seq, key, loc) {
 }
 
 export function getItem(obj, key, loc) {
-  if (isDict(obj)) {
-    const k = dictKey(key, loc);
-    if (!Object.prototype.hasOwnProperty.call(obj, k)) throw new PyError('KeyError', `辞書にキー ${repr(key)} がありません`, loc);
-    return obj[k];
-  }
+  if (isDict(obj)) return dictGet(obj, key, loc);
   if (obj instanceof PyRange) return obj.at(normIndex(obj, key, loc));
   if (isStr(obj) || Array.isArray(obj)) return obj[normIndex(obj, key, loc)];
   throw new PyError('TypeError', `${typeName(obj)} には [ ] で添字を付けられません`, loc);
@@ -294,7 +314,11 @@ export function callFunction(callee, args, kwargs, rt, depth, callDepth, loc) {
   const vals = bindArgs(callee, args, kwargs, env, loc);
   const recorder = rt.recorder;
   if (recorder) {
-    recorder.pushFrame({ name: callee.name, loc: loc || { line: 0, column: 0 }, args: vals.map(a => cloneValue(a)) }, env);
+    // callId：呼び出しごとの番号。組み込み関数から同じ深さで続けて呼ばれる場合（sorted の key など）も区別できる
+    rt.callCount = (rt.callCount ?? 0) + 1;
+    recorder.pushFrame({
+      name: callee.name, loc: loc || { line: 0, column: 0 }, args: vals.map(a => cloneValue(a)), callId: rt.callCount,
+    }, env);
   }
   let result;
   try {
@@ -416,6 +440,7 @@ function _eval(node, env, rt, depth, callDepth) {
       if (node.operator === '=') {
         const value = ev(node.right);
         assignTarget(node.left, value, env, rt, d, callDepth);
+        for (const t of node.extraTargets ?? []) assignTarget(t, value, env, rt, d, callDepth);
         return value;
       }
       const op = node.operator.slice(0, -1);
@@ -441,6 +466,7 @@ function _eval(node, env, rt, depth, callDepth) {
 
     // ── 式 ────────────────────────────────────────────────────────────────────
     case 'Literal':
+      if (node.bigint) return normInt(BigInt(node.bigint));
       return node.pyKind === 'float' ? makeFloat(node.value) : node.value;
     case 'Identifier':
       return lookup(node.name, env, node.loc);
@@ -476,9 +502,9 @@ function _eval(node, env, rt, depth, callDepth) {
       const v = ev(node.argument);
       switch (node.operator) {
         case 'not': return !truthy(v);
-        case '-': if (isNum(v)) return isFloat(v) ? makeFloat(-v.v) : -num(v); break;
-        case '+': if (isNum(v)) return isFloat(v) ? v : num(v); break;
-        case '~': if (isInt(v) || isBool(v)) return ~num(v); break;
+        case '-': if (isNum(v)) return isFloat(v) ? makeFloat(-v.v) : intOp('-', 0, v); break;
+        case '+': if (isNum(v)) return isFloat(v) ? v : intOp('+', 0, v); break;
+        case '~': if (isInt(v) || isBool(v)) return normInt(~big(v)); break;
       }
       throw new PyError('TypeError', `単項の「${node.operator}」は ${typeName(v)} には使えません`, node.loc);
     }

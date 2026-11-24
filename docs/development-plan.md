@@ -84,15 +84,16 @@ Python のコードを JS の AST に変換して JSInterpreter の評価器で�
 
 | Python | 表現 | 理由 |
 |---|---|---|
-| `int` | JS の `number`（2^53 を超えたら `BigInt` に昇格。後回し可） | 棒グラフ・タイムライン・配列の添字など既存ビューが数値を前提にしている |
+| `int` | 安全な整数の範囲は JS の `number`、超えたら `BigInt`（Phase 2 で実装） | 棒グラフ・タイムライン・配列の添字など既存ビューが数値を前提にしている |
 | `float` | `PyFloat` ラッパー | `1.0` と `1` を区別して表示するため |
 | `str` / `bool` / `None` | `string` / `boolean` / `null` | |
 | `list` | JS の `Array` | 配列ビュー（color-box, array-grid）をそのまま使える |
 | `tuple` | 印付きの `Array` | 不変であることと表示 `(1, 2)` のため |
-| `dict` / `set` | `PyDict`（キーの型を保持する） | `{1: 'a'}` と `{'1': 'a'}` を区別するため。JS のオブジェクトではキーが文字列になってしまう |
+| `dict` | `PyDict`（キーと値の配列。キーの型と挿入順を保持する。Phase 2 で実装） | `{1: 'a'}` と `{'1': 'a'}` を区別するため。JS のオブジェクトではキーが文字列になってしまう |
+| `set` | 未定（MVP の対象外） | |
 | 関数・クラス・インスタンス | `__type__` 付きの値（JS 版と同じ流儀） | |
 
-`deepClone` は値の種類ごとのクローン方法を受け取れるようにする（共通コア側の変更）。
+`deepClone` は値の種類ごとのクローン方法を受け取れるようにする（共通コア側の変更、Phase 1 で実装）。確定した表現は [ADR-002](adr/ADR-002-python-value-representation.md)。
 
 ### 2.4 リポジトリ構成：エンジンは別リポジトリ、フロントエンドは JSVisualizer のものを共有（推奨）
 
@@ -120,7 +121,7 @@ Python のコードを JS の AST に変換して JSInterpreter の評価器で�
 |---|---|---|---|
 | **0. スパイク**（どこまで共通化できるかの見極め）✅ 2026-11-24 完了 | Lezer→AST 変換と評価器を PyVisualizer 内で作り、JSInterpreter・JSVisualizer を改変せずに組み合わせて全ビューを確認した | [phase0-report.md](phase0-report.md) | **Go**：2.1 の契約で進めてよい。Lezer で確定 |
 | **1. 共通コアの切り出し**（JSInterpreter）✅ 2026-11-24 完了 | `Recorder`・`TraceDebugger`（ステップ操作・humanStep をノード分類表で）・`Scope`・クローンの hook・出力の断片（`write()`）を `src/core/` に切り出した。JS の部品はその派生クラスにし、挙動は変えていない。Python エンジンは Phase 0 の回避策をすべて外してコアの API に乗せ換え、`for x in` の各回で止まるようにした（`LoopBinding`） | `js-interpreter/core`（作業ブランチ `feature/interp-core`、worktree `../JSInterpreter-core`。JSInterpreter の ADR-015）、[phase1-report.md](phase1-report.md) | JSInterpreter のテスト 284 件（既存 266＋コア 18）が通り、master と作業ブランチのトレースが 194 プログラム・約 24 万イベントで一致（`scripts/compare-js-core.mjs`） |
-| **2. Python エンジン MVP**（PyVisualizer） | 対象の構文（4.1節）、組み込み関数、Python の例外名（`ZeroDivisionError`, `IndexError`…）と日本語メッセージ、`JSDebugger` と同じ API を持つ `PyDebugger` | `src/engine/`、単体テスト、CPython との比較テスト | 4.3 節の比較テストが通る |
+| **2. Python エンジン MVP**（PyVisualizer）✅ 2026-11-25 完了 | 4.1 節の範囲を実装。辞書を `PyDict` に作り直し（キーの型と挿入順）、大きな整数（BigInt）、連続代入。行単位の変数の状態を CPython と比べるテストを追加 | `src/engine/`、[phase2-report.md](phase2-report.md)、ADR-002・003 | CPython との比較（出力 31 件・変数の状態 23 件）を含む 95 件がすべて通る |
 | **3. フロントエンドの言語非依存化**（JSVisualizer） | nodeType 名の直接参照を LanguageProfile の分類に置き換え、値の判別・表示を `valueModel`/`repr` 経由にし、`debugger-adapter.js` でエンジンを差し込めるようにする。Phase 0・1 で見つかった項目：`TraceBuilder.buildHumanIndices` をデバッガーの停止点（ノード分類表）に統一する（Exec Trace などが `LoopBinding` を知らず、JS 版でもボタンの停止点とずれている）、コンソールが出力の断片（`eol: false`）を `joinConsoleLines` で行にまとめる、制御フローの `for` の回数の意味をそろえる | JS 用の LanguageProfile | JS 版の見た目・挙動が変わらない（既存テスト＋Playwright のスクリーンショット比較） |
 | **4. PyVisualizer アプリ** | 入口・Python 用 LanguageProfile・エディタ（`@codemirror/lang-python`）・サンプル（JS 版 21 本に相当するもの）・ビューごとの確認・GitHub Pages へのデプロイ・マニュアル | 公開サイト | 全サンプルがエラーなく実行でき、全タブで表示が正しい |
 | **5. Python の対象拡大** | class/`self`、try/except/else/finally、内包表記、dict/set のメソッド、f 文字列、スライス、キーワード引数・`*args`、`input()`（入力をあらかじめ与える方式） | | 授業の演習で使う範囲をカバーする |

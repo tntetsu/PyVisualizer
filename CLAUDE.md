@@ -17,7 +17,7 @@
 
 [BhvVisualizer](../BhvVisualizer)（学習ログの収集・分析）と組み合わせて授業で使えるようにすることも目標です。
 
-**現在のステータス**: 計画段階（2026-11-24 にリポジトリを作成）。[docs/development-plan.md](docs/development-plan.md) 6 節の「決めてほしいこと」への回答待ち。次は Phase 0（スパイク）。
+**現在のステータス**: 計画段階（2026-11-24 にリポジトリを作成）。方針は確定済み（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、パーサーは Lezer で Phase 0 に評価、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲。現時点で授業で使う予定はないため、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 0（スパイク）。
 
 ## 関連リポジトリ
 
@@ -32,13 +32,14 @@
 ```
 PyVisualizer/
 ├── docs/
-│   └── development-plan.md   # 開発計画書（アーキテクチャ・フェーズ・リスク・未決事項）
+│   ├── development-plan.md   # 開発計画書（アーキテクチャ・フェーズ・リスク・決定事項）
+│   └── adr/                  # Architecture Decision Records（ADR-001〜）
 ├── CLAUDE.md                 # このファイル
 ├── README.md
 └── LICENSE
 ```
 
-予定する構成（Phase 2・4 以降）：`src/engine/`（Lezer→AST 変換・評価器・組み込み・`PyDebugger`）、`src/app.js`（JSVisualizer のフロントエンドに Python エンジンを登録する入口）、`web/`、`tests/`、`docs/adr/`。
+予定する構成（Phase 2・4 以降）：`src/engine/`（Lezer→AST 変換・評価器・組み込み・`PyDebugger`）、`src/app.js`（JSVisualizer のフロントエンドに Python エンジンを登録する入口）、`web/`、`tests/`。
 
 ## 作業上の注意
 
@@ -46,7 +47,8 @@ PyVisualizer/
 
 JSVisualizer と BhvVisualizer は「ソフトウェア基礎論」（2026-09-30〜）で本番稼働中。BhvVisualizer は JSVisualizer の公開版を `<iframe>` で埋め込んでいるため、JSVisualizer の main への push はその日のうちに学生の画面を変える。
 
-- JSInterpreter・JSVisualizer・BhvVisualizer への変更（共通コアの切り出し、フロントエンドの言語非依存化など）は**ブランチで進め、main へのマージは確認を取ってから**行う
+- JSInterpreter・JSVisualizer・BhvVisualizer への変更（共通コアの切り出し、フロントエンドの言語非依存化など）は**ブランチで進め、main へのマージは学期後（2027年2月以降）**。マージの前には必ず確認を取る
+- 作業ブランチは `git worktree` で別ディレクトリ（例：`../JSInterpreter-core`、`../JSVisualizer-multilang`）に取り出す。元の作業ディレクトリは main のまま残す（授業中の修正用）。PyVisualizer の `file:` 依存は worktree 側を指す
 - 変更する場合は、それぞれのリポジトリの CLAUDE.md の手順（回帰テスト・ドキュメント更新・評価計画への記録）に従う
 
 ### ドキュメント

@@ -17,7 +17,7 @@
 
 [BhvVisualizer](../BhvVisualizer)（学習ログの収集・分析）と組み合わせて授業で使えるようにすることも目標です。
 
-**現在のステータス**: 計画段階（2026-11-24 にリポジトリを作成）。方針は確定済み（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、パーサーは Lezer で Phase 0 に評価、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲。現時点で授業で使う予定はないため、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 0（スパイク）。
+**現在のステータス**: Phase 0（スパイク）完了（2026-11-24）。結果は **Go**（[docs/phase0-report.md](docs/phase0-report.md)）：JSInterpreter・JSVisualizer を改変せずに Python エンジンを差し込んで全 12 タブが動き、CPython との比較テストもすべて一致。Lezer は採用を推奨（ユーザーの確認待ち）。方針（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 1（共通コアの切り出し、JSInterpreter の作業ブランチで）と Phase 2（Python エンジン MVP）。
 
 ## 関連リポジトリ
 
@@ -31,15 +31,42 @@
 
 ```
 PyVisualizer/
+├── src/engine/               # Python エンジン（Phase 0 のスパイクで作成、Phase 2 の土台）
+│   ├── parse.js              # Lezer の木 → AST、インデントの検査、構文エラーの日本語説明
+│   ├── interpreter.js        # 評価器（LEGB スコープ・Python の演算）。JSInterpreter の Recorder 等を import して使う
+│   ├── builtins.js           # 組み込み関数・list/str/dict のメソッド・f 文字列の書式指定
+│   ├── values.js             # 値の表現（PyFloat・tuple・dict・PyRange）、repr/str、比較、反復
+│   └── py-debugger.js        # PyDebugger（JSDebugger と同じ API。debugger-adapter.js が使う名前でも export）
+├── samples/                  # Python のサンプル（JSVisualizer の組み込みサンプルに対応）
+├── tests/
+│   ├── oracle.test.js        # CPython（python3）を正解とした比較（samples/ と tests/cases/）
+│   ├── parse.test.js         # 構文エラーの検出と説明、AST の形
+│   ├── trace-builder.test.js # トレースを JSVisualizer の TraceBuilder に通す
+│   └── cases/                # 意味論・例外の比較用の Python プログラム
+├── scripts/
+│   ├── build-spike.mjs       # JSVisualizer のフロントエンドに Python エンジンを差し込んで web/ にビルド
+│   └── capture-spike.mjs     # 全サンプル × 全タブのスクリーンショットとブラウザのエラーを収集
+├── web/                      # ビルド出力（gitignore 対象）
 ├── docs/
 │   ├── development-plan.md   # 開発計画書（アーキテクチャ・フェーズ・リスク・決定事項）
+│   ├── phase0-report.md      # Phase 0 の報告書（共通化の検証、ビューごとの問題、Lezer の評価）
+│   ├── phase0/               # 報告書のスクリーンショット
 │   └── adr/                  # Architecture Decision Records（ADR-001〜）
 ├── CLAUDE.md                 # このファイル
 ├── README.md
 └── LICENSE
 ```
 
-予定する構成（Phase 2・4 以降）：`src/engine/`（Lezer→AST 変換・評価器・組み込み・`PyDebugger`）、`src/app.js`（JSVisualizer のフロントエンドに Python エンジンを登録する入口）、`web/`、`tests/`。
+## コマンド
+
+```bash
+npm install                            # 兄弟ディレクトリに ../JSInterpreter・../JSVisualizer が必要（file: 依存）
+npm test                               # 全テスト（node:test。CPython との比較に python3 が必要）
+node scripts/build-spike.mjs --serve   # http://127.0.0.1:8123/?exercise=/samples/python.json で確認
+node scripts/capture-spike.mjs <出力先> [サンプルid...]   # スクリーンショットの収集
+```
+
+> テストは Jest ではなく Node 標準の `node:test` を使う（ES modules のまま追加の設定なしで動くため）。
 
 ## 作業上の注意
 

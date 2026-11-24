@@ -1,0 +1,6 @@
+print(7 / 2, 7 // 2, -7 // 2, -7 % 3, 7 % -3, 2 ** 10, 2 ** -1, 10 / 5)
+print(1.0, 0.1 + 0.2, 3.0 * 2, 1e3, 2.5e-3, 1 / 3)
+print(True + True, True * 3, -True, abs(-4), abs(-2.5))
+print(round(2.5), round(3.5), round(-0.5), round(2.675, 2), round(7))
+print(int("42"), int(3.9), int(-3.9), float("1.5"), float(2), str(1.0), int(True))
+print(1 == 1.0, 3 != 3.0, 0.1 + 0.2 == 0.3, 5 & 3, 5 | 3, 5 ^ 3, 1 << 4, -16 >> 2, ~5)

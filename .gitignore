@@ -3,3 +3,6 @@ web/*.bundle.js
 
 # ローカル環境固有のClaude Code権限設定（個人ごとに異なるため非公開）
 .claude/settings.local.json
+
+# スパイクのビルド出力（scripts/build-spike.mjs が JSVisualizer からコピー・生成する）
+web/

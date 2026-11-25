@@ -46,14 +46,24 @@ export class PyRange {
   toString() { return this.step === 1 ? `range(${this.start}, ${this.stop})` : `range(${this.start}, ${this.stop}, ${this.step})`; }
 }
 
+/**
+ * イテレーター（map・filter・iter() の結果。ADR-011）。要素は作ったときに全部求めておき（map の関数もその場で呼ぶ）、
+ * next() や for で先頭から取り出す。取り出した要素は戻らない（CPython のイテレーターと同じく 1 回だけ使える）
+ */
+export class PyIterator {
+  constructor(kind, items) { this.kind = kind; this.items = items; this.pos = 0; }
+  toString() { return `<${this.kind} object>`; }
+}
+
 export function floatRepr(v) {
   if (Number.isNaN(v)) return 'nan';
   if (v === Infinity) return 'inf';
   if (v === -Infinity) return '-inf';
-  if (Number.isInteger(v) && Math.abs(v) < 1e16) return v.toFixed(1);
-  const s = String(v);
-  // JS は 1e21 以上で指数表記、Python は 1e16 以上。ここでは近似で十分
-  return s.replace(/e\+?(-?)(\d)$/, 'e$1+0$2').replace('e+-', 'e-').replace(/e\+0(\d\d)/, 'e+$1');
+  // CPython の repr と同じく、最短の桁で表し、10 進の指数が -4 未満か 16 以上なら指数表記（1e+16・1e-05）にする
+  const exp = v === 0 ? 0 : Number(v.toExponential().split('e')[1]);
+  if (exp < -4 || exp >= 16) return v.toExponential().replace(/e([+-])(\d)$/, 'e$10$2');
+  const s = String(v);   // この範囲では JS も固定小数点で、桁は最短（Python と同じ）
+  return s.includes('.') ? s : `${s}.0`;
 }
 
 export const makeFloat = (v) => new PyFloat(v);
@@ -294,6 +304,7 @@ export function typeName(v) {
   if (isList(v)) return 'list';
   if (isDict(v)) return 'dict';
   if (v instanceof PyRange) return 'range';
+  if (v instanceof PyIterator) return v.kind;
   if (isInstance(v)) return v.cls.name;
   if (isClass(v)) return 'type';
   if (v && v.constructor?.name === 'PyModule') return 'module';
@@ -331,7 +342,7 @@ export function repr(v, seen = new Set()) {
   if (isInt(v)) return String(v);
   if (isFloat(v)) return v.toString();
   if (isStr(v)) return strRepr(v);
-  if (v instanceof PyRange) return v.toString();
+  if (v instanceof PyRange || v instanceof PyIterator) return v.toString();
   if (typeof v === 'function') return v.isType ? `<class '${v.pyName}'>` : `<built-in function ${v.pyName ?? v.name}>`;
   if (isClass(v)) return v.builtin ? `<class '${v.name}'>` : `<class '__main__.${v.name}'>`;
   if (isInstance(v)) {
@@ -447,6 +458,7 @@ export function* iterate(v, loc) {
   if (isStr(v)) { yield* v; return; }
   if (v instanceof PyRange) { for (let i = 0; i < v.length; i++) yield v.at(i); return; }
   if (isDict(v)) { for (const k of [...v.keys]) yield k; return; }
+  if (v instanceof PyIterator) { while (v.pos < v.items.length) yield v.items[v.pos++]; return; }
   throw new PyError('TypeError', `${typeName(v)} は繰り返し（for など）に使えません`, loc);
 }
 

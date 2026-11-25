@@ -280,3 +280,32 @@ test('ADR-010 例5：メソッドの引数の誤りは、CPython と同じくク
   assert.equal(errorBox(src, 'en'), "TypeError: A.__init__() missing 1 required positional argument: 'x' (line 4)");
   assert.equal(errorBox(src, 'ja'), "TypeError: A.__init__() の引数 'x' が渡されていません（4行目）");
 });
+
+// ── ADR-011：入門でよく使う書き方 ─────────────
+
+test('ADR-011 例1：型注釈を付けた関数・変数が、そのまま実行できる', () => {
+  assert.deepEqual(output('def area(w: int, h: int = 2) -> int:\n    return w * h\nsize: int = area(3)\nprint(size)\n'), ['6']);
+});
+
+test('ADR-011 例2：* のアンパック・:=・f"{x=}" が使える', () => {
+  const src = 'first, *rest = [1, 2, 3]\nif (n := len(rest)) > 1:\n    print(first, rest, n)\npi = 3.14159\nprint(f"{pi=} {pi = :.2f}")\n';
+  assert.deepEqual(output(src), ['1 [2, 3] 2', 'pi=3.14159 pi = 3.14']);
+});
+
+test('ADR-011 例3：str.format・map・filter・any・divmod・hex・int(s, 16) などが使える', () => {
+  const src = 'print("{} + {} = {:.1f}".format(1, 2, 3))\nprint(list(map(str, [1, 2])), list(filter(None, [0, 3])), any([0, 1]), divmod(7, 2), hex(255), int("ff", 16))\n';
+  assert.deepEqual(output(src), ['1 + 2 = 3.0', "['1', '2'] [3] True (3, 1) 0xff 255"]);
+});
+
+test('ADR-011 例4：exit() を呼ぶと、エラーにならずにそこで終わる', () => {
+  assert.deepEqual(output('print("start")\nexit()\nprint("not reached")\n'), ['start']);
+});
+
+test('ADR-011 例5：map に渡した関数は、map を呼んだときに全部呼ばれる（CPython は値を取り出すときに呼ぶ）', () => {
+  const src = 'def show(x):\n    print("call", x)\n    return x\nm = map(show, [1, 2])\nprint("made")\nprint(list(m))\n';
+  assert.deepEqual(output(src), ['call 1', 'call 2', 'made', '[1, 2]']);
+});
+
+test('ADR-011 例6：大きな小数・小さな小数は CPython と同じく指数表記になり、書式の丸めも CPython と同じ', () => {
+  assert.deepEqual(output('print(1e20, 0.00001, 2.0 ** 70)\nprint(f"{2.675:.2f} {2.5:.0f}")\n'), ['1e+20 1e-05 1.1805916207174113e+21', '2.67 2']);
+});

@@ -259,12 +259,16 @@ export function parse(src) {
   function exprList(nodes) {
     const groups = splitBy(nodes, [',']);
     const hasComma = groups.length > 1;
-    const items = groups.filter(g => g.length > 0).map(g => {
-      if (g.length !== 1) unsupported(`式「${g.map(text).join(' ')}」`, g[0]);
-      return expr(g[0]);
-    });
+    const items = groups.filter(g => g.length > 0).map(element);
     if (!hasComma) return items[0];
     return mk('TupleExpression', nodes[0].from, nodes[nodes.length - 1].to, { elements: items });
+  }
+
+  /** 並び（タプル・リスト・集合）の 1 要素。「*xs」は SpreadElement（代入先では残りをまとめて受け取る。ADR-011） */
+  function element(g) {
+    if (g.length === 2 && isTok(g[0], '*')) return mk('SpreadElement', g[0].from, g[1].to, { argument: expr(g[1]) });
+    if (g.length !== 1) unsupported(`式「${g.map(text).join(' ')}」`, g[0]);
+    return expr(g[0]);
   }
 
   function block(bodyNode) {
@@ -282,7 +286,14 @@ export function parse(src) {
         return [mk('ExpressionStatement', n.from, n.to, { expression: expr(c[0]) })];
 
       case 'AssignStatement': {
-        if (c.some(k => k.name === 'TypeDef')) unsupported('型注釈', n);
+        // 型注釈（x: int = 1）は読み飛ばす。値のない「x: int」は何もしない文（関数の中ではローカル変数の宣言になる。ADR-011）
+        if (c.some(k => k.name === 'TypeDef')) {
+          const rest = c.filter(k => k.name !== 'TypeDef');
+          if (!rest.some(k => k.name === 'AssignOp')) {
+            return [mk('EmptyStatement', n.from, n.to, { annotated: rest.length === 1 && rest[0].name === 'VariableName' ? text(rest[0]) : null })];
+          }
+          c.splice(0, c.length, ...rest);
+        }
         const groups = splitBy(c, ['AssignOp']);
         // 「a = b = 0」は、値（最後の項）を 1 回だけ評価して、左の代入先から順に代入する。
         // ESTree の形を保つため、最初の代入先を left、残りを extraTargets に入れる
@@ -464,7 +475,8 @@ export function parse(src) {
    */
   function params(paramList) {
     const inner = kids(paramList).filter(k => !isTok(k, '(', ')'));
-    return splitBy(inner, [',']).filter(g => g.length).map(g => {
+    return splitBy(inner, [',']).filter(g => g.length).map(g0 => {
+      const g = g0.filter(k => k.name !== 'TypeDef');   // 引数の型注釈は読み飛ばす（ADR-011）
       if (isTok(g[0], '*', '**')) {
         if (g.length === 1 && isTok(g[0], '*')) return mk('KwOnlyMarker', g[0].from, g[0].to, {});
         if (g.length !== 2 || g[1].name !== 'VariableName') unsupported(`引数「${g.map(text).join('')}」`, g[0]);
@@ -474,7 +486,7 @@ export function parse(src) {
       if (g[0].name !== 'VariableName') unsupported(`引数「${g.map(text).join('')}」`, g[0]);
       const id = mk('Identifier', g[0].from, g[0].to, { name: text(g[0]) });
       if (g.length === 1) return id;
-      if (g[1].name === 'TypeDef' || g.length !== 3) unsupported('引数の型注釈', g[0]);
+      if (g.length !== 3) unsupported(`引数「${g.map(text).join('')}」`, g[0]);
       return mk('AssignmentPattern', g[0].from, g[2].to, { left: id, right: expr(g[2]) });
     });
   }
@@ -520,7 +532,7 @@ export function parse(src) {
     const raw = text(n);
     const { prefix, q, bodyOffset } = splitStringLiteral(raw);
     const isRaw = prefix.includes('r');
-    const quasis = [], expressions = [], specs = [];
+    const quasis = [], expressions = [], specs = [], conversions = [];
     let pos = n.from + bodyOffset;
     const stop = n.to - q.length;
     const pushQuasi = (from, to) => {
@@ -529,17 +541,27 @@ export function parse(src) {
     };
     for (const r of kids(n)) {
       if (r.name !== 'FormatReplacement') continue;
-      pushQuasi(pos, r.from);
       const rk = kids(r).filter(k => !isTok(k, '{', '}'));
-      if (rk.some(k => k.name === 'FormatConversion')) unsupported('f 文字列の !r などの変換', r);
+      const selfDoc = rk.find(k => k.name === 'FormatSelfDoc');
+      const conv = rk.find(k => k.name === 'FormatConversion');
       const spec = rk.find(k => k.name === 'FormatSpec');
       if (spec && kids(spec).some(k => k.name === 'FormatReplacement')) unsupported('f 文字列の入れ子の書式指定', r);
-      expressions.push(exprList(rk.filter(k => k.name !== 'FormatSpec')));
+      // f"{x=}"：式の書き方と「=」（前後の空白も含む）をそのまま出し、書式指定がなければ repr にする（ADR-011）
+      if (selfDoc) {
+        pushQuasi(pos, r.from);
+        const doc = src.slice(r.from + 1, (conv ?? spec)?.from ?? r.to - 1);   // 「=」の後ろの空白も含める
+        quasis[quasis.length - 1].value.raw += doc;
+        quasis[quasis.length - 1].value.cooked += doc;
+      } else {
+        pushQuasi(pos, r.from);
+      }
+      expressions.push(exprList(rk.filter(k => !['FormatSpec', 'FormatSelfDoc', 'FormatConversion'].includes(k.name))));
       specs.push(spec ? src.slice(spec.from + 1, spec.to) : '');
+      conversions.push(conv ? text(conv).slice(1) : (selfDoc && !spec ? 'r' : ''));
       pos = r.to;
     }
     pushQuasi(pos, stop);
-    return mk('TemplateLiteral', n.from, n.to, { quasis, expressions, formatSpecs: specs });
+    return mk('TemplateLiteral', n.from, n.to, { quasis, expressions, formatSpecs: specs, conversions });
   }
 
   function isCompare(n) {
@@ -589,15 +611,12 @@ export function parse(src) {
       }
       case 'TupleExpression': {
         const inner = c.filter(k => !isTok(k, '(', ')'));
-        const elements = splitBy(inner, [',']).filter(g => g.length).map(g => expr(g[0]));
+        const elements = splitBy(inner, [',']).filter(g => g.length).map(element);
         return mk('TupleExpression', n.from, n.to, { elements });
       }
       case 'ArrayExpression': {
         const inner = c.filter(k => !isTok(k, '[', ']'));
-        const elements = splitBy(inner, [',']).filter(g => g.length).map(g => {
-          if (g[0].name === '*' || isTok(g[0], '*')) unsupported('リストの中の *', g[0]);
-          return expr(g[0]);
-        });
+        const elements = splitBy(inner, [',']).filter(g => g.length).map(element);
         return mk('ArrayExpression', n.from, n.to, { elements });
       }
       case 'DictionaryExpression': {
@@ -708,12 +727,13 @@ export function parse(src) {
       }
       case 'SetExpression': {
         const inner = c.filter(k => !isTok(k, '{', '}'));
-        const elements = splitBy(inner, [',']).filter(g => g.length).map(g => {
-          if (g.length !== 1) unsupported('集合の中の *', g[0]);
-          return expr(g[0]);
-        });
+        const elements = splitBy(inner, [',']).filter(g => g.length).map(element);
         return mk('SetExpression', n.from, n.to, { elements });
       }
+      case 'NamedExpression':   // n := 3（ADR-011）
+        return mk('NamedExpression', n.from, n.to, {
+          target: mk('Identifier', c[0].from, c[0].to, { name: text(c[0]) }), value: expr(c[c.length - 1]),
+        });
       case 'AwaitExpression': return unsupported('await', n);
       case 'YieldExpression': return unsupported('yield', n);
       default:                return unsupported(`式「${text(n)}」`, n);

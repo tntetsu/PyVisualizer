@@ -12,6 +12,7 @@ PyVisualizer の tests/line-state.test.js が、PyDebugger のトレースから
 import builtins
 import io
 import json
+import re
 import sys
 import types
 
@@ -35,7 +36,8 @@ def srepr(v):
         return '(' + srepr(v[0]) + ',)' if len(v) == 1 else '(' + ', '.join(srepr(x) for x in v) + ')'
     if isinstance(v, dict):
         return '{' + ', '.join(f'{srepr(k)}: {srepr(x)}' for k, x in v.items()) + '}'
-    return repr(v)
+    # map・イテレーターなどの「<… object at 0x…>」はアドレスを除く（PyVisualizer はアドレスを付けない。ADR-011）
+    return re.sub(r' at 0x[0-9a-f]+', '', repr(v))
 
 
 def main():
@@ -100,6 +102,8 @@ def main():
     sys.settrace(tracer)
     try:
         exec(code, g)
+    except SystemExit:
+        pass   # exit()・quit() は正常な終わり（PyVisualizer も同じ。ADR-011）
     except BaseException as e:  # noqa: BLE001  例外で終わるプログラムも、そこまでの変化を出す
         error = type(e).__name__
     finally:

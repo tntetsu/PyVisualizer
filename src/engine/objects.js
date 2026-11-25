@@ -103,6 +103,7 @@ export const EXCEPTIONS = {
   AttributeError: mk('AttributeError', Exception),
   AssertionError: mk('AssertionError', Exception),
   StopIteration: mk('StopIteration', Exception),
+  SystemExit: mk('SystemExit', BaseException),   // exit()・quit()（ADR-011）
   UnboundLocalError: mk('UnboundLocalError', NameError),
   RecursionError: mk('RecursionError', RuntimeError),
   NotImplementedError: mk('NotImplementedError', RuntimeError),

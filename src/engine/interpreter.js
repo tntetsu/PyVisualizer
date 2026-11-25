@@ -47,7 +47,16 @@ function analyzeScope(fnNode) {
   const addTarget = (t) => {
     if (!t) return;
     if (t.type === 'Identifier') locals.add(t.name);
+    else if (t.type === 'SpreadElement') addTarget(t.argument);
     else if (t.type === 'TupleExpression' || t.type === 'ArrayExpression') t.elements.forEach(addTarget);
+  };
+  // 内包表記の中の n := … は、内包表記を含む関数のローカル（PEP 572）
+  const walrusIn = (n) => {
+    if (!n || typeof n !== 'object') return;
+    if (Array.isArray(n)) { n.forEach(walrusIn); return; }
+    if (n.type === 'NamedExpression') locals.add(n.target.name);
+    if (n.type === 'FunctionDeclaration' || n.type === 'ArrowFunctionExpression') return;
+    for (const k of Object.keys(n)) if (k !== 'loc' && k !== 'end' && k !== 'range' && k !== 'pyScope') walrusIn(n[k]);
   };
   for (const p of fnNode.params) { const name = paramName(p); if (name) locals.add(name); }
   const walk = (n) => {
@@ -66,6 +75,8 @@ function analyzeScope(fnNode) {
         walk(n.right);
         return;
       case 'ForOfStatement': addTarget(n.left); walk(n.right); walk(n.body); walk(n.orelse); return;
+      case 'NamedExpression': locals.add(n.target.name); walk(n.value); return;
+      case 'EmptyStatement': if (n.annotated) locals.add(n.annotated); return;   // 関数の中の「x: int」（ADR-011）
       case 'DeleteStatement': n.targets.forEach(t => (t.type === 'Identifier' ? locals.add(t.name) : walk(t))); return;
       case 'ExceptHandler': if (n.name) locals.add(n.name); walk(n.exType); walk(n.body); return;
       case 'ImportStatement': n.names.forEach(x => locals.add(x.alias ?? x.name)); return;
@@ -74,7 +85,7 @@ function analyzeScope(fnNode) {
       case 'ClassDeclaration': locals.add(n.id.name); walk(n.bases); return;
       // 内包表記は自分のスコープを持つ。外側のスコープで評価されるのは最初の iter だけ
       case 'ListComprehension': case 'SetComprehension': case 'DictComprehension': case 'GeneratorExpression':
-        walk(n.generators[0].iter); return;
+        walk(n.generators[0].iter); walrusIn(n); return;
     }
     for (const k of Object.keys(n)) if (k !== 'loc' && k !== 'end' && k !== 'range') walk(n[k]);
   };
@@ -379,6 +390,7 @@ export function callFunction(callee, args, kwargs, rt, depth, callDepth, loc, en
     return callee(args, kwargs, {
       rt, loc, env,
       call: (fn, a, kw = {}) => callFunction(fn, a, kw, rt, depth, callDepth, loc, env),
+      binop: (op, a, b) => binop(op, a, b, loc),   // divmod・pow が演算子と同じ規則で計算するため
     });
   }
   if (isClass(callee)) return instantiate(callee, args, kwargs, rt, depth, callDepth, loc, env);
@@ -466,6 +478,16 @@ function exceptMatches(t, exc, loc) {
   return exc.cls.mro.includes(t);
 }
 
+/** 並びの要素を評価する。*xs は中身を展開する（[*a, 1]。ADR-011） */
+function spreadElements(elements, ev) {
+  const out = [];
+  for (const e of elements) {
+    if (e.type === 'SpreadElement') out.push(...iterate(ev(e.argument), e.loc));
+    else out.push(ev(e));
+  }
+  return out;
+}
+
 // ── 代入 ──────────────────────────────────────────────────────────────────────
 
 function unpack(value, n, loc) {
@@ -478,13 +500,25 @@ function unpack(value, n, loc) {
   return items;
 }
 
+/** a, *b, c = value：* の付いた代入先が残りをリストで受け取る（ADR-011） */
+function unpackStar(value, elements, star, loc) {
+  const items = [...iterate(value, loc)];
+  const fixed = elements.length - 1;
+  if (items.length < fixed) {
+    throw new PyError('ValueError', `値が足りず 少なくとも ${fixed} 個の変数に分けられません（${items.length} 個）`, loc);
+  }
+  const after = elements.length - star - 1;
+  return [...items.slice(0, star), items.slice(star, items.length - after), ...items.slice(items.length - after)];
+}
+
 function assignTarget(target, value, env, rt, d, callDepth) {
   switch (target.type) {
     case 'Identifier': assignName(target.name, value, env, target.loc); return;
     case 'TupleExpression':
     case 'ArrayExpression': {
-      const items = unpack(value, target.elements.length, target.loc);
-      target.elements.forEach((t, i) => assignTarget(t, items[i], env, rt, d, callDepth));
+      const star = target.elements.findIndex(t => t.type === 'SpreadElement');
+      const items = star < 0 ? unpack(value, target.elements.length, target.loc) : unpackStar(value, target.elements, star, target.loc);
+      target.elements.forEach((t, i) => assignTarget(t.type === 'SpreadElement' ? t.argument : t, items[i], env, rt, d, callDepth));
       return;
     }
     case 'MemberExpression': {
@@ -560,6 +594,7 @@ function comprehend(node, env, rt, d, callDepth, emit) {
     const locals = new Set();
     const add = (t) => {
       if (t.type === 'Identifier') locals.add(t.name);
+      else if (t.type === 'SpreadElement') add(t.argument);
       else if (t.type === 'TupleExpression' || t.type === 'ArrayExpression') t.elements.forEach(add);
     };
     node.generators.forEach(g => add(g.target));
@@ -809,7 +844,11 @@ function _eval(node, env, rt, depth, callDepth) {
     case 'TemplateLiteral': {
       let s = node.quasis[0].value.cooked;
       node.expressions.forEach((e, i) => {
-        s += formatValue(ev(e), node.formatSpecs[i], e.loc) + node.quasis[i + 1].value.cooked;
+        // !r・!s・!a の変換（f"{x=}" は書式指定がなければ !r。ADR-011）
+        const conv = node.conversions?.[i];
+        let v = ev(e);
+        if (conv === 'r' || conv === 'a') v = repr(v); else if (conv === 's') v = str(v);
+        s += formatValue(v, node.formatSpecs[i], e.loc) + node.quasis[i + 1].value.cooked;
       });
       return s;
     }
@@ -880,8 +919,15 @@ function _eval(node, env, rt, depth, callDepth) {
       }
       return getItem(obj, ev(node.property), node.loc);
     }
-    case 'ArrayExpression':  return node.elements.map(e => ev(e));
-    case 'TupleExpression':  return makeTuple(node.elements.map(e => ev(e)));
+    case 'ArrayExpression':  return spreadElements(node.elements, ev);
+    case 'TupleExpression':  return makeTuple(spreadElements(node.elements, ev));
+    case 'NamedExpression': {   // n := 3。内包表記の中では、内包表記を含むスコープに代入する（PEP 572。ADR-011）
+      const v = ev(node.value);
+      let target = env;
+      while (target.kind === 'comprehension') target = target.parent;
+      assignName(node.target.name, v, target, node.target.loc);
+      return v;
+    }
     case 'ListComprehension':
     case 'GeneratorExpression': {   // ジェネレーター式は、その場で全部計算した list として扱う
       const out = [];
@@ -903,7 +949,7 @@ function _eval(node, env, rt, depth, callDepth) {
     }
     case 'SetExpression': {
       const out = makeSet();
-      for (const e of node.elements) setAdd(out, ev(e), e.loc);
+      for (const v of spreadElements(node.elements, ev)) setAdd(out, v, node.loc);
       return out;
     }
     case 'DictExpression': {

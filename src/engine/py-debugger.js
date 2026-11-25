@@ -53,6 +53,10 @@ export function runPython(source, { maxSteps = 100_000, stdin = '', lang = 'ja' 
   try {
     evaluate(ast, env, rt, 0, 0);
   } catch (e) {
+    // exit()・quit()（捕まえられなかった SystemExit）は、その時点で正常に終わる（ADR-011）
+    if (e?.exc?.cls?.name === 'SystemExit') {
+      return { ast, trace: finalizePartialTrace(recorder.trace), consoleLogs: recorder.consoleLogs };
+    }
     // ホストの JS のスタックがあふれた場合は、Python の RecursionError として扱う
     // （Node の既定のスタックで約 290 段。CPython の上限 1000 段より浅い。docs/phase0-report.md 3.2 節 g）
     const err = e instanceof RangeError && /call stack|too much recursion/i.test(e.message)

@@ -71,8 +71,13 @@ export const pythonValueModel = {
     if (isTuple(v)) return ['(', ')'];
     if (isSet(v)) return ['{', '}'];   // set は JS の配列で表す（sequence）。かっこだけ { }
     if (Array.isArray(v)) return ['[', ']'];
+    if (isInstance(v)) return [`${v.cls.name}{`, '}'];   // Dog{name: 'Rex'}。辞書と区別する（ADR-009）
     return ['{', '}'];
   },
+  // Python の書き方：かっこの内側に空白を入れない（{'a': 1}）、空の集合は set()、1 要素の tuple は (1,)（ADR-009）
+  padMapping: false,
+  emptyText: (v) => (isSet(v) ? 'set()' : null),
+  trailingComma: (v, count) => isTuple(v) && count === 1,
 };
 
 

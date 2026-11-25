@@ -20,7 +20,7 @@ Phase 5 で次を入れる。
 2. `raise ValueError("no scores")` を捕まえて `print("error:", e, e.args)` すると、`error: no scores ('no scores',)` と表示される。プログラムが `raise` で投げた例外のメッセージは、書いたとおりに出る
 3. `try:` / `x = 1 // 0` / `except ZeroDivisionError as e:` / `x = -1` を「人」の単位で進めると、2 行目（例外が起きる文）→ 3 行目（`except` の行。`e` が `ZeroDivisionError`）→ 4 行目の順に止まる
 4. `__str__` も `__repr__` もないクラスのインスタンスを `print` すると、`<__main__.Dog object>` と表示される。CPython の表示（`<__main__.Dog object at 0x7f…>`）からアドレスを除いたもの
-5. インスタンスは、画面のビューでは属性で表示される（例：`{ name: 'Rex' }`）。メモリ・オブジェクトのビューの見出しはクラス名（`Dog`）
+5. インスタンスは、画面のビューでは属性で表示される（例：`{ name: 'Rex' }`。[ADR-009](ADR-009-value-notation-details.md) で、クラス名を付けた `Dog{name: 'Rex'}` に変えた）。メモリ・オブジェクトのビューの見出しはクラス名（`Dog`）
 
 ## 決定
 

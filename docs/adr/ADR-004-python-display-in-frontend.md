@@ -15,7 +15,7 @@ PyVisualizer は JSVisualizer のフロントエンドを共有する（[ADR-001
 |---|---|---|
 | 1 | `avg = sum([72, 88, 95, 61]) / 4` | 変数 `avg`：`{ v: 79 }` → `79.0` |
 | 2 | `found = 3 > 5`、`x = None`、`s = "the"` | `false`・`null`・`"the"` → `False`・`None`・`'the'` |
-| 3 | `d = {"a": 1, 2: None}`、`t = (1, "x")` | `{ __type__: "PyDict", keys: […], values: […] }` → `{ 'a': 1, 2: None }`。`[1, "x"]` → `(1, 'x')` |
+| 3 | `d = {"a": 1, 2: None}`、`t = (1, "x")` | `{ __type__: "PyDict", keys: […], values: […] }` → `{ 'a': 1, 2: None }`（[ADR-009](ADR-009-value-notation-details.md) で `{'a': 1, 2: None}` に変えた）。`[1, "x"]` → `(1, 'x')` |
 | 4 | `total = 0` / `for i in range(3):` / `    total += i` | 実行トレースの `for` の行：`range(3)` を求める 1 回だけ → それに加えて各回（`i` が 0・1・2）の計 4 回 |
 | 5 | `for i in range(3):` / `    print(i, end=" ")` / `print()` | コンソール：`0 `・`1 `・`2 `・（空行）の 4 行 → `0 1 2 ` の 1 行 |
 
@@ -48,7 +48,7 @@ Python のプロファイルは [src/lang/python.js](../../src/lang/python.js)�
 ## 結果
 
 - JS 版（JSVisualizer）の表示は変わらない（JSVisualizer の全サンプル・記事の題材・全タブで、画面の HTML を main と比べて確かめる。[phase3-report.md](../phase3-report.md)）
-- 辞書のかっこの内側には空白が入る（`{ 'a': 1 }`）。Python の `repr`（`{'a': 1}`）とは少し違うが、ビューの書式（JS 版と同じ）に合わせた
+- 辞書のかっこの内側には空白が入る（`{ 'a': 1 }`）。Python の `repr`（`{'a': 1}`）とは少し違うが、ビューの書式（JS 版と同じ）に合わせた → [ADR-009](ADR-009-value-notation-details.md) で、Python の書き方（`{'a': 1}`）に変えた
 - 1 要素のタプルは、式評価・置換のビューでは `(1)` と表示される（`repr` は `(1,)`）
 - タブに登録されていないビュー（棒グラフ・タイムライン・トレース表・スコープ・アニメーション）は書き換えていない
 - エラーメッセージは日本語だけ（画面を英語にしても Python のエラーは日本語のまま）

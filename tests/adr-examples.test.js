@@ -63,8 +63,8 @@ test('ADR-004 例2：真偽値・None・文字列は Python の書き方で表�
   assert.deepEqual(['found', 'x', 's'].map(n => shown(src, n)), ['False', 'None', "'the'"]);
 });
 
-test('ADR-004 例3：辞書とタプルは中身が Python の書き方で表示される', () => {
-  assert.equal(shown('d = {"a": 1, 2: None}\n', 'd'), "{ 'a': 1, 2: None }");
+test('ADR-004 例3：辞書とタプルは中身が Python の書き方で表示される（かっこの内側の空白は ADR-009 でなくした）', () => {
+  assert.equal(shown('d = {"a": 1, 2: None}\n', 'd'), "{'a': 1, 2: None}");
   assert.equal(shown('t = (1, "x")\n', 't'), "(1, 'x')");
 });
 
@@ -138,7 +138,7 @@ test('ADR-006 例5：インスタンスは、画面ではクラス名と属性�
   assert.equal(m.kind(d), 'object');
   assert.equal(m.label(d), 'Dog');
   assert.deepEqual(m.entries(d), [['name', 'Rex']]);
-  assert.equal(formatValue(d).replace(/<[^>]+>/g, ''), "{ name: 'Rex' }");
+  assert.equal(formatValue(d).replace(/<[^>]+>/g, ''), "Dog{name: 'Rex'}");   // ADR-009 でクラス名を付けた
 });
 
 // ── ADR-007：import math と input() ─────────────────────────────────────────────
@@ -207,4 +207,36 @@ test('ADR-008 例2：for 文・if 文に止まっても、文全体はオレン�
   assert.deepEqual([...shown].sort(), [
     '0', '2', 'i', 'i > 0', 'print', 'print(total)', 'range', 'range(2)', 'total', 'total += i', 'total = 0',
   ]);
+});
+
+// ── ADR-009：値の表記の細部と、制御フローのループの else ─────────────
+
+import { formatPlain, formatFrameLabel } from 'js-visualizer/src/utils/format.js';
+
+test('ADR-009 例1：辞書はかっこの内側に空白を入れず、空の辞書は {}、空の集合は set() と表示される', () => {
+  const src = 'd = {"a": 1}\ne = {}\ns = set()\n';
+  assert.deepEqual(['d', 'e', 's'].map(n => shown(src, n)), ["{'a': 1}", '{}', 'set()']);
+});
+
+test('ADR-009 例2：1 要素のタプルは (5,) と表示される（変数のビューと式評価・置換の式の中）', () => {
+  const dbg = new PyDebugger('t = (5,)\n');
+  const t = dbg.trace[dbg.trace.length - 1].env[0].t;
+  assert.equal(shown('t = (5,)\n', 't'), '(5,)');
+  assert.equal(formatPlain(t), '(5,)');
+});
+
+test('ADR-009 例3：インスタンスはクラス名を付けて Dog{name: \'Rex\'} と表示され、コールスタックの見出しでは Dog{…} になる', () => {
+  const src = 'class Dog:\n    def __init__(self, name):\n        self.name = name\nclass Cat:\n    pass\nd = Dog("Rex")\nc = Cat()\n';
+  assert.deepEqual(['d', 'c'].map(n => shown(src, n)), ["Dog{name: 'Rex'}", 'Cat{}']);
+  const d = new PyDebugger(src).trace.at(-1).env[0].d;
+  assert.equal(formatFrameLabel({ name: 'bark', args: [d] }), 'bark(Dog{…})');
+});
+
+test('ADR-009 例4：制御フローのビューに for の else が表示され、break で抜けたときは else の中の行が実行されていない', () => {
+  const src = 'for x in [1, 2, 3]:\n    if x == 2:\n        break\nelse:\n    print("not found")\nprint("done")\n';
+  const dbg = new PyDebugger(src);
+  const [global] = new TraceBuilder(dbg.trace, src, dbg.ast).buildCFG();
+  const loop = global.items[0];
+  assert.equal(loop.type, 'for');
+  assert.deepEqual(loop.else_.map(it => [it.label, it.execCount]), [['print("not found")', 0]]);
 });

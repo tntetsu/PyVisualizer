@@ -6,7 +6,7 @@
  */
 import {
   PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet, dictGet, dictHas, dictDelete, dictEntries,
-  intOp, normInt,
+  intOp, normInt, makeSet, setAdd, setHas, setDiscard, isSet,
   isFloat, isInt, isBool, isNum, isStr, isTuple, isList, isDict, num, typeName,
   truthy, repr, str, pyEq, pyCmp, iterate,
 } from './values.js';
@@ -107,6 +107,64 @@ export function formatValue(v, spec, loc) {
   return fill.repeat(Math.floor(pad / 2)) + s + fill.repeat(Math.ceil(pad / 2));
 }
 
+/**
+ * 文字列の % 書式（printf 形式）。fmt % args。
+ * 対応：%[-+ 0][幅][.精度](d i s r f F e E g G x X o c %)。%(名前)s の形は未対応。
+ */
+export function percentFormat(fmt, args, loc) {
+  const list = isTuple(args) ? [...args] : [args];
+  let k = 0;
+  const next = () => {
+    if (k >= list.length) throw new PyError('TypeError', '% 書式に対して値が足りません', loc);
+    return list[k++];
+  };
+  const out = fmt.replace(/%(\([^)]*\))?([-+ 0#]*)(\*|\d+)?(?:\.(\*|\d+))?([diouxXeEfFgGcrsa%])/g, (all, key, flags, width, prec, type) => {
+    if (key) throw new PyError('NotImplemented', '%(名前)s の形の書式はまだ対応していません', loc);
+    if (type === '%') return '%';
+    if (width === '*') width = String(num(next()));
+    if (prec === '*') prec = String(num(next()));
+    const v = next();
+    let s;
+    switch (type) {
+      case 'd': case 'i': case 'u':
+        if (!isNum(v)) throw new PyError('TypeError', `%${type} には数が必要です（${typeName(v)} が渡されました）`, loc);
+        s = String(isFloat(v) ? Math.trunc(v.v) : num(v) === v ? v : num(v));
+        if (typeof v === 'bigint') s = String(v);
+        break;
+      case 'x': case 'X': case 'o': {
+        if (!(isInt(v) || isBool(v))) throw new PyError('TypeError', `%${type} には整数が必要です（${typeName(v)} が渡されました）`, loc);
+        const b = BigInt(isBool(v) ? num(v) : v);
+        s = (b < 0n ? '-' : '') + (b < 0n ? -b : b).toString(type === 'o' ? 8 : 16);
+        if (type === 'X') s = s.toUpperCase();
+        break;
+      }
+      case 'e': case 'E': case 'f': case 'F': case 'g': case 'G': {
+        if (!isNum(v)) throw new PyError('TypeError', `%${type} には数が必要です（${typeName(v)} が渡されました）`, loc);
+        const p = prec === undefined ? 6 : Number(prec);
+        const x = num(v);
+        if (type === 'f' || type === 'F') s = x.toFixed(p);
+        else if (type === 'e' || type === 'E') s = x.toExponential(p).replace(/e([+-])(\d)$/, 'e$10$2');
+        else s = String(Number(x.toPrecision(p || 1)));
+        if (type === 'E' || type === 'G') s = s.toUpperCase();
+        break;
+      }
+      case 'c': s = isStr(v) ? v : String.fromCodePoint(num(v)); break;
+      case 'r': case 'a': s = repr(v); break;
+      default: s = str(v); if (prec !== undefined) s = s.slice(0, Number(prec));
+    }
+    if (/[+ ]/.test(flags) && /^[\d]/.test(s) && 'diueEfFgG'.includes(type)) s = (flags.includes('+') ? '+' : ' ') + s;
+    const w = Number(width ?? 0);
+    if (s.length < w) {
+      if (flags.includes('-')) s = s.padEnd(w);
+      else if (flags.includes('0') && 'diuxXoeEfFgG'.includes(type)) s = (s[0] === '-' || s[0] === '+' ? s[0] + s.slice(1).padStart(w - 1, '0') : s.padStart(w, '0'));
+      else s = s.padStart(w);
+    }
+    return s;
+  });
+  if (k < list.length && isTuple(args)) throw new PyError('TypeError', '% 書式に対して値が多すぎます', loc);
+  return out;
+}
+
 export const BUILTINS = {
   print: def('print', (args, kwargs, ctx) => {
     const sep = kwargs.sep ?? ' ';
@@ -184,6 +242,7 @@ export const BUILTINS = {
   }),
   list:  def('list', (args, _k, ctx) => (args.length ? [...iterate(args[0], ctx.loc)] : [])),
   tuple: def('tuple', (args, _k, ctx) => makeTuple(args.length ? [...iterate(args[0], ctx.loc)] : [])),
+  set:   def('set', (args, _k, ctx) => makeSet(args.length ? [...iterate(args[0], ctx.loc)] : [], ctx.loc)),
   dict:  def('dict', (args, kwargs, ctx) => {
     const d = makeDict();
     if (args.length) {
@@ -298,11 +357,40 @@ const DICT_METHODS = {
   clear: (d) => { d.keys.length = 0; d.values.length = 0; d._index = null; return null; },
 };
 
+const SET_METHODS = {
+  add: (st, [x], _k, ctx) => { setAdd(st, x, ctx.loc); return null; },
+  remove: (st, [x], _k, ctx) => {
+    if (!setDiscard(st, x, ctx.loc)) throw new PyError('KeyError', `集合に ${repr(x)} がありません`, ctx.loc);
+    return null;
+  },
+  discard: (st, [x], _k, ctx) => { setDiscard(st, x, ctx.loc); return null; },
+  pop: (st, _a, _k, ctx) => {
+    if (st.length === 0) throw new PyError('KeyError', '空の集合から pop() しようとしました', ctx.loc);
+    const x = st[0];
+    setDiscard(st, x, ctx.loc);
+    return x;
+  },
+  clear: (st) => { st.length = 0; st._index = null; return null; },
+  copy: (st, _a, _k, ctx) => makeSet([...st], ctx.loc),
+  update: (st, args, _k, ctx) => { for (const a of args) for (const x of iterate(a, ctx.loc)) setAdd(st, x, ctx.loc); return null; },
+  union: (st, args, _k, ctx) => makeSet([...st, ...args.flatMap(a => [...iterate(a, ctx.loc)])], ctx.loc),
+  intersection: (st, args, _k, ctx) => {
+    const others = args.map(a => makeSet([...iterate(a, ctx.loc)], ctx.loc));
+    return makeSet(st.filter(x => others.every(o => setHas(o, x, ctx.loc))), ctx.loc);
+  },
+  difference: (st, args, _k, ctx) => {
+    const others = args.map(a => makeSet([...iterate(a, ctx.loc)], ctx.loc));
+    return makeSet(st.filter(x => !others.some(o => setHas(o, x, ctx.loc))), ctx.loc);
+  },
+  issubset: (st, [o], _k, ctx) => { const os = makeSet([...iterate(o, ctx.loc)], ctx.loc); return st.every(x => setHas(os, x, ctx.loc)); },
+  issuperset: (st, [o], _k, ctx) => [...iterate(o, ctx.loc)].every(x => setHas(st, x, ctx.loc)),
+};
+
 function escRe(s) { return s.replace(/[\]\\^-]/g, '\\$&'); }
 
 /** obj.name を取り出す（スパイクではメソッドだけ。呼び出し可能な JS 関数を返す） */
 export function getAttr(obj, name, loc) {
-  const table = isList(obj) ? LIST_METHODS : isStr(obj) ? STR_METHODS : isDict(obj) ? DICT_METHODS
+  const table = isList(obj) ? LIST_METHODS : isStr(obj) ? STR_METHODS : isDict(obj) ? DICT_METHODS : isSet(obj) ? SET_METHODS
     : isTuple(obj) ? { index: LIST_METHODS.index, count: LIST_METHODS.count } : null;
   const m = table && Object.prototype.hasOwnProperty.call(table, name) ? table[name] : null;
   if (!m) throw new PyError('AttributeError', `${typeName(obj)} に ${name} という属性はありません`, loc);

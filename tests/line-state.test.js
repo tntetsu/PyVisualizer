@@ -6,6 +6,8 @@
  * PyDebugger 側は、トレースのうち同じ時点に当たるイベント（各文の enter、for の各回のループ変数への代入
  * （LoopBinding）の enter、関数を抜ける直前のイベント）で同じように記録する。呼び出しはフレームの callId で区別する。チェックする時点の細かさが少し違っても、各文の効果は次の文の前に確かめられるので、
  * 変化の列は一致する（1 行に複数の文を書いた場合は一致しないので、テストのプログラムでは書かない）。
+ * 内包表記の中ではどちらもチェックしない（CPython 3.12 は内包表記を呼び出し元のフレームの中で実行するため、
+ * 途中の変数が一時的に見える。PEP 709）。集合は要素を並べ替えて比べる（CPython の集合の順序はハッシュ値で決まる）。
  *
  * 出力の比較（oracle.test.js）では見えない、途中の変数の値の誤りを見つけるためのテスト。
  * 例外で終わるプログラムは、例外の直前の変化の扱いが両者で異なるので対象外。
@@ -16,7 +18,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { PyDebugger } from '../src/engine/py-debugger.js';
-import { repr } from '../src/engine/values.js';
+import { repr, isSet, isTuple, isDict } from '../src/engine/values.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const files = [
@@ -27,10 +29,19 @@ const files = [
 /** CPython の line イベントに当たる文 */
 const STATEMENTS = new Set([
   'ExpressionStatement', 'IfStatement', 'WhileStatement', 'ForOfStatement', 'ReturnStatement',
-  'FunctionDeclaration', 'BreakStatement', 'ContinueStatement', 'EmptyStatement',
+  'FunctionDeclaration', 'BreakStatement', 'ContinueStatement', 'EmptyStatement', 'DeleteStatement',
 ]);
 
 const isFunctionValue = (v) => v && (v.__type__ === 'JSFunction' || typeof v === 'function');
+
+/** repr と同じだが、集合は要素の repr を並べ替えて出す（tools/trace_states.py の srepr と同じ規則） */
+function srepr(v) {
+  if (isSet(v)) return v.length ? `{${v.map(srepr).sort().join(', ')}}` : 'set()';
+  if (isTuple(v)) return v.length === 1 ? `(${srepr(v[0])},)` : `(${v.map(srepr).join(', ')})`;
+  if (Array.isArray(v)) return `[${v.map(srepr).join(', ')}]`;
+  if (isDict(v)) return `{${v.keys.map((k, i) => `${srepr(k)}: ${srepr(v.values[i])}`).join(', ')}}`;
+  return repr(v);
+}
 
 /** イベントがどの呼び出しのフレームに属するか（モジュールは 0） */
 const frameKey = (ev) => (ev.callDepth === 0 ? 0 : ev.callStack[ev.callStack.length - 1].callId);
@@ -39,10 +50,13 @@ const frameKey = (ev) => (ev.callDepth === 0 ? 0 : ev.callStack[ev.callStack.len
 export function stateChanges(trace) {
   const changes = [];
   const prev = new Map();   // frameKey → そのフレームの前回のスナップショット（{ 名前: repr }）
+  const baseLen = new Map(); // frameKey → そのフレームの最初のイベントのスコープの深さ（env.length）
   for (let i = 0; i < trace.length; i++) {
     const ev = trace[i];
     const key = frameKey(ev);
-    if (!prev.has(key)) prev.set(key, {});
+    if (!prev.has(key)) { prev.set(key, {}); baseLen.set(key, ev.env.length); }
+    // 内包表記の中（フレームのスコープより深いスコープ）ではチェックしない（CPython 側も内包表記の繰り返しではチェックしない）
+    if (ev.env.length > baseLen.get(key)) continue;
     const next = trace[i + 1];
     const leaving = !next || next.callDepth < ev.callDepth
       || (next.callDepth === ev.callDepth && frameKey(next) !== key);   // 関数（またはプログラム）を抜ける直前
@@ -52,7 +66,7 @@ export function stateChanges(trace) {
     const frameName = ev.callDepth === 0 ? '<module>' : ev.callStack[ev.callStack.length - 1].name;
     const cur = {};
     for (const [k, v] of Object.entries(ev.env[0] ?? {})) {
-      if (!k.startsWith('__') && !isFunctionValue(v)) cur[k] = repr(v);
+      if (!k.startsWith('__') && !isFunctionValue(v)) cur[k] = srepr(v);
     }
     const old = prev.get(key);
     for (const [k, v] of Object.entries(cur)) {

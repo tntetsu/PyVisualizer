@@ -9,6 +9,7 @@
  * | list | JS の Array |
  * | tuple | 凍結した Array ＋ 列挙されない印 __pytuple__ |
  * | dict | { __type__: 'PyDict', keys: [...], values: [...] }（挿入順。キーの検索用の索引は列挙されない _index） |
+ * | set | Array ＋ 列挙されない印 __pyset__（入れた順。検索用の索引は列挙されない _index。CPython の表示順とは違う） |
  * | range | PyRange（不変） |
  * | 関数 | { __type__: 'JSFunction', ... }（JSVisualizer のビューが関数として扱う印をそのまま使う） |
  */
@@ -61,12 +62,14 @@ export const makeFloat = (v) => new PyFloat(v);
  * tuple の印（__pytuple__）を保ったままクローンする。PyFloat・PyRange は不変なので既定どおり参照を保持する。
  */
 export function pyCloneHook(v, clone, seen) {
-  if (!Array.isArray(v) || v.__pytuple__ !== true) return undefined;
+  if (!Array.isArray(v)) return undefined;
+  const marker = v.__pytuple__ === true ? '__pytuple__' : v.__pyset__ === true ? '__pyset__' : null;
+  if (!marker) return undefined;
   const c = [];
   seen.set(v, c);
   for (const x of v) c.push(clone(x));
-  Object.defineProperty(c, '__pytuple__', { value: true, enumerable: false });
-  return Object.freeze(c);
+  Object.defineProperty(c, marker, { value: true, enumerable: false });
+  return marker === '__pytuple__' ? Object.freeze(c) : c;
 }
 
 export function makeTuple(items) {
@@ -81,7 +84,10 @@ export const isBool  = (v) => typeof v === 'boolean';
 export const isNum   = (v) => isInt(v) || isFloat(v) || isBool(v);
 export const isStr   = (v) => typeof v === 'string';
 export const isTuple = (v) => Array.isArray(v) && v.__pytuple__ === true;
-export const isList  = (v) => Array.isArray(v) && !isTuple(v);
+export const isSet   = (v) => Array.isArray(v) && v.__pyset__ === true;
+export const isList  = (v) => Array.isArray(v) && !isTuple(v) && !isSet(v);
+/** 添字・スライス・連結・繰り返しができる並び（list・tuple。set は含まない） */
+export const isSeq   = (v) => Array.isArray(v) && !isSet(v);
 export const isDict  = (v) => v !== null && typeof v === 'object' && v.__type__ === 'PyDict';
 export const isFunc  = (v) => (v && v.__type__ === 'JSFunction') || typeof v === 'function';
 
@@ -238,6 +244,40 @@ export function dictDelete(d, k, loc) {
 
 export const dictEntries = (d) => d.keys.map((k, i) => [k, d.values[i]]);
 
+// ── set ───────────────────────────────────────────────────────────────────────
+
+function setIndex(st) {
+  if (!st._index) {
+    const idx = new Map();
+    st.forEach((x, i) => idx.set(hashKey(x), i));
+    Object.defineProperty(st, '_index', { value: idx, enumerable: false, writable: true, configurable: true });
+  }
+  return st._index;
+}
+
+export function makeSet(items = [], loc) {
+  const st = [];
+  Object.defineProperty(st, '__pyset__', { value: true, enumerable: false });
+  for (const x of items) setAdd(st, x, loc);
+  return st;
+}
+export const setHas = (st, x, loc) => setIndex(st).has(hashKey(x, loc));
+export function setAdd(st, x, loc) {
+  const h = hashKey(x, loc);
+  const idx = setIndex(st);
+  if (idx.has(h)) return;
+  idx.set(h, st.length);
+  st.push(x);
+}
+/** 要素を取り除く。なければ false */
+export function setDiscard(st, x, loc) {
+  const i = setIndex(st).get(hashKey(x, loc));
+  if (i === undefined) return false;
+  st.splice(i, 1);
+  st._index = null;   // 次に使うときに作り直す
+  return true;
+}
+
 export function typeName(v) {
   if (v === null || v === undefined) return 'NoneType';
   if (isBool(v)) return 'bool';
@@ -245,6 +285,7 @@ export function typeName(v) {
   if (isFloat(v)) return 'float';
   if (isStr(v)) return 'str';
   if (isTuple(v)) return 'tuple';
+  if (isSet(v)) return 'set';
   if (isList(v)) return 'list';
   if (isDict(v)) return 'dict';
   if (v instanceof PyRange) return 'range';
@@ -283,6 +324,7 @@ export function repr(v, seen = new Set()) {
   seen.add(v);
   try {
     if (isTuple(v)) return v.length === 1 ? `(${repr(v[0], seen)},)` : `(${v.map(x => repr(x, seen)).join(', ')})`;
+    if (isSet(v)) return v.length === 0 ? 'set()' : `{${v.map(x => repr(x, seen)).join(', ')}}`;
     if (Array.isArray(v)) return `[${v.map(x => repr(x, seen)).join(', ')}]`;
     if (isDict(v)) return `{${v.keys.map((k, i) => `${repr(k, seen)}: ${repr(v.values[i], seen)}`).join(', ')}}`;
   } finally { seen.delete(v); }
@@ -300,6 +342,7 @@ export function pyEq(a, b) {
   }
   if (a === null || b === null || a === undefined || b === undefined) return (a ?? null) === (b ?? null);
   if (isStr(a) || isStr(b)) return a === b;
+  if (isSet(a) || isSet(b)) return isSet(a) && isSet(b) && a.length === b.length && a.every(x => setHas(b, x));
   if (Array.isArray(a) && Array.isArray(b)) {
     if (isTuple(a) !== isTuple(b) || a.length !== b.length) return false;
     return a.every((x, i) => pyEq(x, b[i]));
@@ -319,7 +362,7 @@ export function pyCmp(a, b, op, loc) {
     return num(a) - num(b);
   }
   if (isStr(a) && isStr(b)) return a < b ? -1 : a > b ? 1 : 0;
-  if (Array.isArray(a) && Array.isArray(b) && isTuple(a) === isTuple(b)) {
+  if (isSeq(a) && isSeq(b) && isTuple(a) === isTuple(b)) {
     for (let i = 0; i < Math.min(a.length, b.length); i++) {
       if (!pyEq(a[i], b[i])) return pyCmp(a[i], b[i], op, loc);
     }
@@ -345,6 +388,7 @@ export function contains(container, item, loc) {
     return container.includes(item);
   }
   if (isDict(container)) return dictHas(container, item, loc);
+  if (isSet(container)) return setHas(container, item, loc);
   if (container instanceof PyRange) {
     if (!isNum(item) || typeof item === 'bigint') return false;
     const x = num(item);

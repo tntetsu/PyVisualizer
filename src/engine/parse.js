@@ -312,18 +312,22 @@ export function parse(src) {
       }
 
       case 'WhileStatement': {
-        if (c.some(k => isTok(k, 'else'))) unsupported('while ... else', n);
-        const body = block(c[2]);
-        return [mk('WhileStatement', n.from, body.range[1], { test: expr(c[1]), body })];
+        // while ... else：break しなかったときだけ else を実行する（orelse）
+        const bodies = c.filter(k => k.name === 'Body');
+        const body = block(bodies[0]);
+        const orelse = bodies[1] ? block(bodies[1]) : null;
+        return [mk('WhileStatement', n.from, (orelse ?? body).range[1], { test: expr(c[1]), body, orelse })];
       }
 
       case 'ForStatement': {
-        if (c.some(k => isTok(k, 'else'))) unsupported('for ... else', n);
         const inIdx = c.findIndex(k => isTok(k, 'in'));
+        const bodyIdx = c.findIndex(k => k.name === 'Body');
         const left = exprList(c.slice(1, inIdx));
-        const right = exprList(c.slice(inIdx + 1, c.length - 1));
-        const body = block(c[c.length - 1]);
-        return [mk('ForOfStatement', n.from, body.range[1], { left, right, body, await: false })];
+        const right = exprList(c.slice(inIdx + 1, bodyIdx));
+        const body = block(c[bodyIdx]);
+        const elseBody = c.slice(bodyIdx + 1).find(k => k.name === 'Body');
+        const orelse = elseBody ? block(elseBody) : null;   // for ... else
+        return [mk('ForOfStatement', n.from, (orelse ?? body).range[1], { left, right, body, orelse, await: false })];
       }
 
       case 'FunctionDefinition': {
@@ -357,7 +361,15 @@ export function parse(src) {
       case 'WithStatement':     return unsupported('with 文', n);
       case 'ImportStatement':   return unsupported('import', n);
       case 'RaiseStatement':    return unsupported('raise', n);
-      case 'DeleteStatement':   return unsupported('del', n);
+      case 'DeleteStatement': {
+        const targets = splitBy(c.slice(1), [',']).filter(g => g.length).map(g => {
+          if (g.length !== 1) unsupported(`del の対象「${g.map(text).join('')}」`, g[0]);
+          const t = expr(g[0]);
+          if (t.type !== 'Identifier' && t.type !== 'MemberExpression') unsupported(`del の対象「${text(g[0])}」`, g[0]);
+          return t;
+        });
+        return [mk('DeleteStatement', n.from, n.to, { targets })];
+      }
       case 'AssertStatement':   return unsupported('assert', n);
       case 'MatchStatement':    return unsupported('match 文', n);
       case 'Decorator':         return unsupported('デコレーター', n);
@@ -365,15 +377,55 @@ export function parse(src) {
     }
   }
 
+  /**
+   * 引数の並び。*args は RestElement、**kwargs は KeywordRestElement、単独の * は KwOnlyMarker
+   * （その後ろの引数はキーワードでしか渡せない）。デフォルト値は AssignmentPattern。
+   */
   function params(paramList) {
     const inner = kids(paramList).filter(k => !isTok(k, '(', ')'));
     return splitBy(inner, [',']).filter(g => g.length).map(g => {
-      if (g[0].name !== 'VariableName') unsupported(`引数「${g.map(text).join('')}」（*args など）`, g[0]);
+      if (isTok(g[0], '*', '**')) {
+        if (g.length === 1 && isTok(g[0], '*')) return mk('KwOnlyMarker', g[0].from, g[0].to, {});
+        if (g.length !== 2 || g[1].name !== 'VariableName') unsupported(`引数「${g.map(text).join('')}」`, g[0]);
+        const arg = mk('Identifier', g[1].from, g[1].to, { name: text(g[1]) });
+        return mk(isTok(g[0], '*') ? 'RestElement' : 'KeywordRestElement', g[0].from, g[1].to, { argument: arg });
+      }
+      if (g[0].name !== 'VariableName') unsupported(`引数「${g.map(text).join('')}」`, g[0]);
       const id = mk('Identifier', g[0].from, g[0].to, { name: text(g[0]) });
       if (g.length === 1) return id;
       if (g[1].name === 'TypeDef' || g.length !== 3) unsupported('引数の型注釈', g[0]);
       return mk('AssignmentPattern', g[0].from, g[2].to, { left: id, right: expr(g[2]) });
     });
+  }
+
+  /**
+   * 内包表記の中身（括弧を除いた子ノードの並び）→ { head, generators }。
+   * head は最初の for より前のノード。generators は [{ target, iter, ifs }]（for … in … if …）。
+   */
+  function comprehension(nodes) {
+    const firstFor = nodes.findIndex(k => isTok(k, 'for'));
+    const head = nodes.slice(0, firstFor);
+    const generators = [];
+    let i = firstFor;
+    while (i < nodes.length) {
+      if (isTok(nodes[i], 'async')) unsupported('async の内包表記', nodes[i]);
+      // for <target> in <iter> (if <cond>)*
+      const inIdx = nodes.findIndex((k, j) => j > i && isTok(k, 'in'));
+      const target = exprList(nodes.slice(i + 1, inIdx));
+      let j = inIdx + 1;
+      const iterStart = j;
+      while (j < nodes.length && !isTok(nodes[j], 'for', 'if')) j++;
+      const iter = exprList(nodes.slice(iterStart, j));
+      const ifs = [];
+      while (j < nodes.length && isTok(nodes[j], 'if')) {
+        const condStart = ++j;
+        while (j < nodes.length && !isTok(nodes[j], 'for', 'if')) j++;
+        ifs.push(exprList(nodes.slice(condStart, j)));
+      }
+      generators.push({ target, iter, ifs });
+      i = j;
+    }
+    return { head, generators };
   }
 
   function stringValue(n) {
@@ -514,7 +566,15 @@ export function parse(src) {
           if (g.length === 3 && g[1].name === 'AssignOp') {
             return mk('KeywordArgument', g[0].from, g[2].to, { name: text(g[0]), value: expr(g[2]) });
           }
-          if (g.length !== 1) unsupported(`引数「${g.map(text).join('')}」（*args や内包表記など）`, g[0]);
+          if (isTok(g[0], '*', '**') && g.length === 2) {
+            return mk(isTok(g[0], '*') ? 'SpreadElement' : 'KeywordSpreadElement', g[0].from, g[1].to, { argument: expr(g[1]) });
+          }
+          if (g.some(k => isTok(k, 'for'))) {
+            // f(x for x in xs)：括弧のないジェネレーター式
+            const { head, generators } = comprehension(g);
+            return mk('GeneratorExpression', g[0].from, g[g.length - 1].to, { element: exprList(head), generators });
+          }
+          if (g.length !== 1) unsupported(`引数「${g.map(text).join('')}」`, g[0]);
           return expr(g[0]);
         });
         return mk('CallExpression', n.from, n.to, { callee: expr(c[0]), arguments: args, optional: false });
@@ -548,11 +608,31 @@ export function parse(src) {
         });
       }
       case 'ArrayComprehensionExpression':
-      case 'DictionaryComprehensionExpression':
       case 'SetComprehensionExpression':
-      case 'ComprehensionExpression':
-        return unsupported('内包表記', n);
-      case 'SetExpression':   return unsupported('集合（set）', n);
+      case 'ComprehensionExpression': {
+        const inner = c.filter(k => !isTok(k, '[', ']', '{', '}', '(', ')'));
+        const { head, generators } = comprehension(inner);
+        const type = { ArrayComprehensionExpression: 'ListComprehension', SetComprehensionExpression: 'SetComprehension',
+          ComprehensionExpression: 'GeneratorExpression' }[n.name];
+        return mk(type, n.from, n.to, { element: exprList(head), generators });
+      }
+      case 'DictionaryComprehensionExpression': {
+        const inner = c.filter(k => !isTok(k, '{', '}'));
+        const { head, generators } = comprehension(inner);
+        const colon = head.findIndex(k => isTok(k, ':'));
+        if (colon < 0) unsupported('この形の辞書の内包表記', n);
+        return mk('DictComprehension', n.from, n.to, {
+          key: exprList(head.slice(0, colon)), value: exprList(head.slice(colon + 1)), generators,
+        });
+      }
+      case 'SetExpression': {
+        const inner = c.filter(k => !isTok(k, '{', '}'));
+        const elements = splitBy(inner, [',']).filter(g => g.length).map(g => {
+          if (g.length !== 1) unsupported('集合の中の *', g[0]);
+          return expr(g[0]);
+        });
+        return mk('SetExpression', n.from, n.to, { elements });
+      }
       case 'AwaitExpression': return unsupported('await', n);
       case 'YieldExpression': return unsupported('yield', n);
       default:                return unsupported(`式「${text(n)}」`, n);

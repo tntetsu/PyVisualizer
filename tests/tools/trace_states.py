@@ -18,6 +18,19 @@ import types
 SKIP_TYPES = (types.FunctionType, types.BuiltinFunctionType, types.ModuleType, type)
 
 
+def srepr(v):
+    """repr と同じだが、集合は要素の repr を並べ替えて出す（CPython の集合の順序はハッシュ値で決まり、PyVisualizer と比べられないため）"""
+    if isinstance(v, (set, frozenset)):
+        return '{' + ', '.join(sorted(srepr(x) for x in v)) + '}' if v else 'set()'
+    if isinstance(v, list):
+        return '[' + ', '.join(srepr(x) for x in v) + ']'
+    if isinstance(v, tuple):
+        return '(' + srepr(v[0]) + ',)' if len(v) == 1 else '(' + ', '.join(srepr(x) for x in v) + ')'
+    if isinstance(v, dict):
+        return '{' + ', '.join(f'{srepr(k)}: {srepr(x)}' for k, x in v.items()) + '}'
+    return repr(v)
+
+
 def main():
     path = sys.argv[1]
     with open(path, encoding='utf-8') as f:
@@ -25,6 +38,7 @@ def main():
 
     changes = []
     prev = {}
+    last_line = {}   # id(frame) → 直前の line イベントの行
 
     def snapshot(frame):
         co = frame.f_code
@@ -33,7 +47,7 @@ def main():
         else:
             names = set(co.co_varnames) | set(co.co_cellvars)
             items = {k: v for k, v in frame.f_locals.items() if k in names}
-        return {k: repr(v) for k, v in items.items() if not isinstance(v, SKIP_TYPES)}
+        return {k: srepr(v) for k, v in items.items() if not isinstance(v, SKIP_TYPES)}
 
     def check(frame):
         cur = snapshot(frame)
@@ -46,12 +60,23 @@ def main():
     def tracer(frame, event, arg):
         if frame.f_code.co_filename != path:
             return None
+        # ジェネレーター式・内包表記のフレーム（<genexpr> など）は内部の動きなので対象外
+        # （PyVisualizer はジェネレーター式をその場で全部計算し、内包表記の中もチェックしない）
+        if frame.f_code.co_name in ('<genexpr>', '<listcomp>', '<dictcomp>', '<setcomp>'):
+            return None
         if event == 'call':
             prev[id(frame)] = {}
+        elif event == 'line' and last_line.get(id(frame)) == frame.f_lineno:
+            # 同じ行の line イベントが続くのは、行の中で後ろへ戻ったとき（内包表記の繰り返し）。CPython 3.12 は内包表記を
+            # 呼び出し元のフレームの中で実行する（PEP 709）ので、ここでは内包表記の変数が一時的に見える。チェックしない
+            pass
         elif event in ('line', 'return'):
             check(frame)
             if event == 'return':
                 prev.pop(id(frame), None)
+                last_line.pop(id(frame), None)
+        if event == 'line':
+            last_line[id(frame)] = frame.f_lineno
         return tracer
 
     g = {'__name__': '__main__', '__builtins__': builtins}

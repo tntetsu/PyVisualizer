@@ -9,11 +9,12 @@ import {
   Recorder, Scope, createCloner, ReturnSignal, BreakSignal, ContinueSignal, ThrowSignal,
 } from 'js-interpreter/core';
 import {
-  PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet, dictGet, intOp, normInt, big,
+  PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet, dictGet, dictDelete, dictEntries, intOp, normInt, big,
+  makeSet, setAdd, setHas, isSet, isSeq,
   isFloat, isInt, isBool, isNum, isStr, isTuple, isList, isDict, num, typeName,
   truthy, repr, str, pyEq, pyCmp, iterate, contains, pyCloneHook,
 } from './values.js';
-import { BUILTINS, getAttr, formatValue } from './builtins.js';
+import { BUILTINS, getAttr, formatValue, percentFormat } from './builtins.js';
 
 const MAX_RECURSION = 1000;
 
@@ -43,7 +44,7 @@ function analyzeScope(fnNode) {
     if (t.type === 'Identifier') locals.add(t.name);
     else if (t.type === 'TupleExpression' || t.type === 'ArrayExpression') t.elements.forEach(addTarget);
   };
-  for (const p of fnNode.params) addTarget(p.type === 'AssignmentPattern' ? p.left : p);
+  for (const p of fnNode.params) { const name = paramName(p); if (name) locals.add(name); }
   const walk = (n) => {
     if (!n || typeof n !== 'object') return;
     if (Array.isArray(n)) { n.forEach(walk); return; }
@@ -59,7 +60,11 @@ function analyzeScope(fnNode) {
         for (const t of [n.left, ...(n.extraTargets ?? [])]) { addTarget(t); if (t.type !== 'Identifier') walk(t); }
         walk(n.right);
         return;
-      case 'ForOfStatement': addTarget(n.left); walk(n.right); walk(n.body); return;
+      case 'ForOfStatement': addTarget(n.left); walk(n.right); walk(n.body); walk(n.orelse); return;
+      case 'DeleteStatement': n.targets.forEach(t => (t.type === 'Identifier' ? locals.add(t.name) : walk(t))); return;
+      // 内包表記は自分のスコープを持つ。外側のスコープで評価されるのは最初の iter だけ
+      case 'ListComprehension': case 'SetComprehension': case 'DictComprehension': case 'GeneratorExpression':
+        walk(n.generators[0].iter); return;
     }
     for (const k of Object.keys(n)) if (k !== 'loc' && k !== 'end' && k !== 'range') walk(n[k]);
   };
@@ -125,6 +130,7 @@ export function binop(op, a, b, loc) {
       if (isTuple(a) && isTuple(b)) return makeTuple([...a, ...b]);
       break;
     case '-':
+      if (isSet(a) && isSet(b)) return makeSet(a.filter(x => !setHas(b, x)));
       if (ints) return intOp('-', a, b);
       if (nums) return fl(a, b, (x, y) => x - y);
       break;
@@ -132,7 +138,7 @@ export function binop(op, a, b, loc) {
       if (ints) return intOp('*', a, b);
       if (nums) return fl(a, b, (x, y) => x * y);
       for (const [s, n] of [[a, b], [b, a]]) {
-        if ((isInt(n) || isBool(n)) && (isStr(s) || Array.isArray(s))) {
+        if ((isInt(n) || isBool(n)) && (isStr(s) || isSeq(s))) {
           const k = Math.max(0, num(n));
           if (isStr(s)) return s.repeat(k);
           const out = [];
@@ -159,7 +165,7 @@ export function binop(op, a, b, loc) {
       }
       break;
     case '%':
-      if (isStr(a)) throw new PyError('NotImplemented', '文字列の % 書式はまだ対応していません', loc);
+      if (isStr(a)) return percentFormat(a, b, loc);
       if (nums) {
         if (isZero(b)) throw zeroDiv(loc);
         return ints ? intOp('%', a, b) : fl(a, b, (x, y) => x - y * Math.floor(x / y));
@@ -173,6 +179,11 @@ export function binop(op, a, b, loc) {
       }
       break;
     case '&': case '|': case '^': case '<<': case '>>':
+      if (isSet(a) && isSet(b) && op !== '<<' && op !== '>>') {
+        if (op === '|') return makeSet([...a, ...b]);
+        if (op === '&') return makeSet(a.filter(x => setHas(b, x)));
+        return makeSet([...a.filter(x => !setHas(b, x)), ...b.filter(x => !setHas(a, x))]);
+      }
       if (ints) {
         if ((op === '<<' || op === '>>') && num(b) < 0) throw new PyError('ValueError', 'シフトする量に負の数は使えません', loc);
         return intOp(op, a, b);
@@ -186,6 +197,14 @@ function compare(op, a, b, loc) {
   switch (op) {
     case '==': return pyEq(a, b);
     case '!=': return !pyEq(a, b);
+    case '<': case '>': case '<=': case '>=':
+      if (isSet(a) && isSet(b)) {
+        const sub = (x, y) => x.every(e => setHas(y, e));
+        return { '<': sub(a, b) && a.length < b.length, '<=': sub(a, b), '>': sub(b, a) && b.length < a.length, '>=': sub(b, a) }[op];
+      }
+      break;
+  }
+  switch (op) {
     case '<':  return pyCmp(a, b, op, loc) < 0;
     case '>':  return pyCmp(a, b, op, loc) > 0;
     case '<=': return pyCmp(a, b, op, loc) <= 0;
@@ -215,7 +234,7 @@ function normIndex(seq, key, loc) {
 export function getItem(obj, key, loc) {
   if (isDict(obj)) return dictGet(obj, key, loc);
   if (obj instanceof PyRange) return obj.at(normIndex(obj, key, loc));
-  if (isStr(obj) || Array.isArray(obj)) return obj[normIndex(obj, key, loc)];
+  if (isStr(obj) || isSeq(obj)) return obj[normIndex(obj, key, loc)];
   throw new PyError('TypeError', `${typeName(obj)} には [ ] で添字を付けられません`, loc);
 }
 
@@ -246,7 +265,7 @@ function sliceIndices(len, lo, hi, st, loc) {
 function getSlice(obj, lo, hi, st, loc) {
   const ints = [lo, hi, st].map(v => (v === null || v === undefined ? null : num(v)));
   if (isStr(obj)) return sliceIndices(obj.length, ...ints, loc).map(i => obj[i]).join('');
-  if (Array.isArray(obj)) {
+  if (isSeq(obj)) {
     const out = sliceIndices(obj.length, ...ints, loc).map(i => obj[i]);
     return isTuple(obj) ? makeTuple(out) : out;
   }
@@ -255,16 +274,36 @@ function getSlice(obj, lo, hi, st, loc) {
 
 // ── 関数 ──────────────────────────────────────────────────────────────────────
 
+/** 引数の名前（KwOnlyMarker は null） */
+function paramName(p) {
+  switch (p.type) {
+    case 'Identifier': return p.name;
+    case 'AssignmentPattern': return p.left.name;
+    case 'RestElement': case 'KeywordRestElement': return p.argument.name;
+  }
+  return null;
+}
+
 function makeFunction(node, env, rt, depth, callDepth) {
   if (!node.pyScope) node.pyScope = analyzeScope(node);
+  // 引数の仕様：pos（位置・キーワードどちらでも）・rest（*args）・kwonly（* の後ろ）・kwrest（**kwargs）。
   // デフォルト引数は def の時点で 1 回だけ評価する（Python の意味論）
-  const defaults = node.params.map(p => (p.type === 'AssignmentPattern' ? evaluate(p.right, env, rt, depth, callDepth) : undefined));
+  const spec = [];
+  let afterStar = false;
+  for (const p of node.params) {
+    if (p.type === 'KwOnlyMarker') { afterStar = true; continue; }
+    if (p.type === 'RestElement') { spec.push({ name: p.argument.name, kind: 'rest' }); afterStar = true; continue; }
+    if (p.type === 'KeywordRestElement') { spec.push({ name: p.argument.name, kind: 'kwrest' }); continue; }
+    spec.push({
+      name: paramName(p), kind: afterStar ? 'kwonly' : 'pos',
+      default: p.type === 'AssignmentPattern' ? evaluate(p.right, env, rt, depth, callDepth) : undefined,
+    });
+  }
   return {
     __type__: 'JSFunction',
     name: node.id ? node.id.name : '<lambda>',
     params: node.params,
-    paramNames: node.params.map(p => (p.type === 'AssignmentPattern' ? p.left.name : p.name)),
-    defaults,
+    paramSpec: spec,
     body: node.body,
     expression: !!node.expression,
     isLambda: !!node.isLambda,
@@ -273,28 +312,45 @@ function makeFunction(node, env, rt, depth, callDepth) {
   };
 }
 
+/**
+ * 引数を束縛する。戻り値は引数の宣言順の値（コールスタックの表示用）。
+ * 位置引数 → pos、余りは rest（なければ TypeError）。キーワード引数 → pos・kwonly、余りは kwrest（なければ TypeError）。
+ */
 function bindArgs(fn, args, kwargs, env, loc) {
-  const names = fn.paramNames;
-  if (args.length > names.length) {
-    throw new PyError('TypeError', `${fn.name}() の引数は ${names.length} 個までですが、${args.length} 個渡されました`, loc);
+  const spec = fn.paramSpec;
+  const vals = new Map();
+  const pos = spec.filter(p => p.kind === 'pos');
+  const rest = spec.find(p => p.kind === 'rest');
+  const kwrest = spec.find(p => p.kind === 'kwrest');
+  args.slice(0, pos.length).forEach((a, i) => vals.set(pos[i].name, a));
+  if (args.length > pos.length) {
+    if (!rest) throw new PyError('TypeError', `${fn.name}() の位置引数は ${pos.length} 個までですが、${args.length} 個渡されました`, loc);
   }
-  const vals = new Array(names.length);
-  const given = new Array(names.length).fill(false);
-  args.forEach((a, i) => { vals[i] = a; given[i] = true; });
+  if (rest) vals.set(rest.name, makeTuple(args.slice(pos.length)));
+  const extra = makeDict();
   for (const [k, v] of Object.entries(kwargs)) {
-    const i = names.indexOf(k);
-    if (i < 0) throw new PyError('TypeError', `${fn.name}() に ${k} という名前の引数はありません`, loc);
-    if (given[i]) throw new PyError('TypeError', `${fn.name}() の引数 ${k} が 2 回指定されています`, loc);
-    vals[i] = v; given[i] = true;
-  }
-  names.forEach((n, i) => {
-    if (!given[i]) {
-      if (fn.defaults[i] === undefined) throw new PyError('TypeError', `${fn.name}() の引数 '${n}' が渡されていません`, loc);
-      vals[i] = fn.defaults[i];
+    const p = spec.find(q => q.name === k && (q.kind === 'pos' || q.kind === 'kwonly'));
+    if (!p) {
+      if (!kwrest) throw new PyError('TypeError', `${fn.name}() に ${k} という名前の引数はありません`, loc);
+      dictSet(extra, k, v, loc);
+      continue;
     }
-    env.bindings.set(n, vals[i]);
-  });
-  return vals;
+    if (vals.has(p.name)) throw new PyError('TypeError', `${fn.name}() の引数 ${k} が 2 回指定されています`, loc);
+    vals.set(p.name, v);
+  }
+  if (kwrest) vals.set(kwrest.name, extra);
+  // 変数は CPython と同じ順（位置引数 → キーワード専用引数 → *args → **kwargs）で作る（変数のビューの列の順になる）
+  const order = { pos: 0, kwonly: 1, rest: 2, kwrest: 3 };
+  for (const p of [...spec].sort((x, y) => order[x.kind] - order[y.kind])) {
+    if (!vals.has(p.name)) {
+      if (p.default === undefined) {
+        throw new PyError('TypeError', `${fn.name}() の${p.kind === 'kwonly' ? 'キーワード専用' : ''}引数 '${p.name}' が渡されていません`, loc);
+      }
+      vals.set(p.name, p.default);
+    }
+    env.bindings.set(p.name, vals.get(p.name));
+  }
+  return spec.map(p => vals.get(p.name));
 }
 
 export function callFunction(callee, args, kwargs, rt, depth, callDepth, loc) {
@@ -355,7 +411,13 @@ function assignTarget(target, value, env, rt, d, callDepth) {
     }
     case 'MemberExpression': {
       if (!target.computed) throw new PyError('NotImplemented', '属性への代入（obj.x = ...）はまだ対応していません', target.loc);
-      if (target.property.type === 'SliceExpression') throw new PyError('NotImplemented', 'スライスへの代入はまだ対応していません', target.loc);
+      if (target.property.type === 'SliceExpression') {
+        const obj = evaluate(target.object, env, rt, d, callDepth);
+        const p = target.property;
+        const bounds = [p.lower, p.upper, p.step].map(x => (x ? num(evaluate(x, env, rt, d, callDepth)) : null));
+        setSlice(obj, bounds, value, target.loc);
+        return;
+      }
       const obj = evaluate(target.object, env, rt, d, callDepth);
       const key = evaluate(target.property, env, rt, d, callDepth);
       setItem(obj, key, value, target.loc);
@@ -363,6 +425,78 @@ function assignTarget(target, value, env, rt, d, callDepth) {
     }
   }
   throw new PyError('SyntaxError', 'ここには代入できません', target.loc);
+}
+
+/** obj[lo:hi:st] = value（list だけ）。step が 1 なら長さが変わってよい。拡張スライスは同じ長さのときだけ */
+function setSlice(obj, [lo, hi, st], value, loc) {
+  if (!isList(obj)) throw new PyError('TypeError', `${typeName(obj)} の要素は変更できません`, loc);
+  const items = [...iterate(value, loc)];
+  const idx = sliceIndices(obj.length, lo, hi, st, loc);
+  if ((st ?? 1) === 1) {
+    const start = idx.length ? idx[0] : Math.max(0, Math.min(obj.length, lo == null ? 0 : (lo < 0 ? lo + obj.length : lo)));
+    obj.splice(start, idx.length, ...items);
+    return;
+  }
+  if (idx.length !== items.length) {
+    throw new PyError('ValueError', `長さ ${idx.length} の拡張スライスに、長さ ${items.length} の並びは代入できません`, loc);
+  }
+  idx.forEach((i, k) => { obj[i] = items[k]; });
+}
+
+/** del の対象を消す */
+function deleteTarget(t, env, rt, d, callDepth) {
+  if (t.type === 'Identifier') {
+    const scope = env.pyScope;
+    const home = scope?.globals.has(t.name) ? rootOf(env) : env;
+    if (!home.bindings.has(t.name)) throw new PyError('NameError', `'${t.name}' という名前は定義されていません`, t.loc);
+    home.bindings.delete(t.name);
+    return;
+  }
+  const obj = evaluate(t.object, env, rt, d, callDepth);
+  if (!t.computed) throw new PyError('NotImplemented', '属性の del はまだ対応していません', t.loc);
+  if (t.property.type === 'SliceExpression') {
+    if (!isList(obj)) throw new PyError('TypeError', `${typeName(obj)} の要素は消せません`, t.loc);
+    const p = t.property;
+    const bounds = [p.lower, p.upper, p.step].map(x => (x ? num(evaluate(x, env, rt, d, callDepth)) : null));
+    const idx = new Set(sliceIndices(obj.length, ...bounds, t.loc));
+    const keep = obj.filter((_, i) => !idx.has(i));
+    obj.splice(0, obj.length, ...keep);
+    return;
+  }
+  const key = evaluate(t.property, env, rt, d, callDepth);
+  if (isDict(obj)) { dictDelete(obj, key, t.loc); return; }
+  if (isList(obj)) { obj.splice(normIndex(obj, key, t.loc), 1); return; }
+  throw new PyError('TypeError', `${typeName(obj)} の要素は消せません`, t.loc);
+}
+
+/**
+ * 内包表記を評価する。内包表記ごとのスコープ（ループ変数が外に漏れない）を作り、
+ * 最初の iter だけを外側のスコープで評価する。各回のループ変数への代入は LoopBinding として記録する。
+ * emit(cenv) は、すべての for と if を通った組み合わせごとに呼ばれる。
+ */
+function comprehend(node, env, rt, d, callDepth, emit) {
+  if (!node.pyScope) {
+    const locals = new Set();
+    const add = (t) => {
+      if (t.type === 'Identifier') locals.add(t.name);
+      else if (t.type === 'TupleExpression' || t.type === 'ArrayExpression') t.elements.forEach(add);
+    };
+    node.generators.forEach(g => add(g.target));
+    node.pyScope = { locals, globals: new Set(), nonlocals: new Set() };
+  }
+  const cenv = new PyScope(env, 'comprehension', node.pyScope);
+  const loop = (gi) => {
+    if (gi === node.generators.length) { emit(cenv); return; }
+    const g = node.generators[gi];
+    const iterable = evaluate(g.iter, gi === 0 ? env : cenv, rt, d, callDepth);
+    const binding = { type: 'LoopBinding', loc: g.target.loc, end: g.target.end };
+    for (const item of iterate(iterable, g.iter.loc)) {
+      const bind = () => { assignTarget(g.target, item, cenv, rt, d + 1, callDepth); return item; };
+      if (rt.recorder) rt.recorder.record(binding, cenv, d, callDepth, bind); else bind();
+      if (g.ifs.every(c => truthy(evaluate(c, cenv, rt, d, callDepth)))) loop(gi + 1);
+    }
+  };
+  loop(0);
 }
 
 // ── 評価 ──────────────────────────────────────────────────────────────────────
@@ -397,6 +531,9 @@ function _eval(node, env, rt, depth, callDepth) {
     case 'ExpressionStatement': return ev(node.expression);
     case 'EmptyStatement':
     case 'GlobalStatement':     return undefined;
+    case 'DeleteStatement':
+      for (const t of node.targets) deleteTarget(t, env, rt, d, callDepth);
+      return undefined;
     case 'BreakStatement':      return new BreakSignal();
     case 'ContinueStatement':   return new ContinueSignal();
     case 'ReturnStatement':     return new ReturnSignal(node.argument ? ev(node.argument) : null);
@@ -405,27 +542,32 @@ function _eval(node, env, rt, depth, callDepth) {
       if (truthy(ev(node.test))) return ev(node.consequent);
       return node.alternate ? ev(node.alternate) : undefined;
 
-    case 'WhileStatement':
+    case 'WhileStatement': {
+      let broke = false;
       while (truthy(ev(node.test))) {
         const r = ev(node.body);
-        if (r instanceof BreakSignal) break;
+        if (r instanceof BreakSignal) { broke = true; break; }
         if (r instanceof ContinueSignal) continue;
         if (isSignal(r)) return r;
       }
+      if (!broke && node.orelse) { const r = ev(node.orelse); if (isSignal(r)) return r; }
       return undefined;
+    }
 
     case 'ForOfStatement': {
       const iterable = ev(node.right);
       // 各回のループ変数への代入を LoopBinding として記録する（humanStep が各回で止まる。phase0-report 3.2 節 f）
       const binding = { type: 'LoopBinding', loc: node.left.loc, end: node.left.end };
+      let broke = false;
       for (const item of iterate(iterable, node.right.loc)) {
         const bind = () => { assignTarget(node.left, item, env, rt, d + 1, callDepth); return item; };
         if (rt.recorder) rt.recorder.record(binding, env, d, callDepth, bind); else bind();
         const r = ev(node.body);
-        if (r instanceof BreakSignal) break;
+        if (r instanceof BreakSignal) { broke = true; break; }
         if (r instanceof ContinueSignal) continue;
         if (isSignal(r)) return r;
       }
+      if (!broke && node.orelse) { const r = ev(node.orelse); if (isSignal(r)) return r; }
       return undefined;
     }
 
@@ -523,7 +665,15 @@ function _eval(node, env, rt, depth, callDepth) {
       const args = [], kwargs = {};
       for (const a of node.arguments) {
         if (a.type === 'KeywordArgument') kwargs[a.name] = ev(a.value);
-        else args.push(ev(a));
+        else if (a.type === 'SpreadElement') args.push(...iterate(ev(a.argument), a.loc));
+        else if (a.type === 'KeywordSpreadElement') {
+          const d2 = ev(a.argument);
+          if (!isDict(d2)) throw new PyError('TypeError', `** の後ろは辞書でなければなりません（${typeName(d2)}）`, a.loc);
+          for (const [k, v] of dictEntries(d2)) {
+            if (!isStr(k)) throw new PyError('TypeError', 'キーワード引数の名前は文字列でなければなりません', a.loc);
+            kwargs[k] = v;
+          }
+        } else args.push(ev(a));
       }
       return callFunction(callee, args, kwargs, rt, d, callDepth, node.loc);
     }
@@ -538,6 +688,30 @@ function _eval(node, env, rt, depth, callDepth) {
     }
     case 'ArrayExpression':  return node.elements.map(e => ev(e));
     case 'TupleExpression':  return makeTuple(node.elements.map(e => ev(e)));
+    case 'ListComprehension':
+    case 'GeneratorExpression': {   // ジェネレーター式は、その場で全部計算した list として扱う
+      const out = [];
+      comprehend(node, env, rt, d, callDepth, (cenv) => out.push(evaluate(node.element, cenv, rt, d, callDepth)));
+      return out;
+    }
+    case 'SetComprehension': {
+      const out = makeSet();
+      comprehend(node, env, rt, d, callDepth, (cenv) => setAdd(out, evaluate(node.element, cenv, rt, d, callDepth), node.loc));
+      return out;
+    }
+    case 'DictComprehension': {
+      const out = makeDict();
+      comprehend(node, env, rt, d, callDepth, (cenv) => {
+        const k = evaluate(node.key, cenv, rt, d, callDepth);
+        dictSet(out, k, evaluate(node.value, cenv, rt, d, callDepth), node.loc);
+      });
+      return out;
+    }
+    case 'SetExpression': {
+      const out = makeSet();
+      for (const e of node.elements) setAdd(out, ev(e), e.loc);
+      return out;
+    }
     case 'DictExpression': {
       const d2 = makeDict();
       for (const { key, value } of node.entries) dictSet(d2, ev(key), ev(value), key.loc);

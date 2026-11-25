@@ -6,7 +6,7 @@
 import { python } from '@codemirror/lang-python';
 import { PyDebugger, ExecutionError } from '../engine/py-debugger.js';
 import {
-  PyFloat, PyRange, isTuple, isDict, num, repr, strRepr,
+  PyFloat, PyRange, isTuple, isSet, isDict, num, repr, strRepr,
 } from '../engine/values.js';
 
 /** Python の値の見せ方（JSVisualizer の ValueModel） */
@@ -48,18 +48,21 @@ export const pythonValueModel = {
   label(v) {
     if (isDict(v)) return `dict[${v.keys.length}]`;
     if (isTuple(v)) return `tuple[${v.length}]`;
+    if (isSet(v)) return `set[${v.length}]`;
     if (Array.isArray(v)) return `list[${v.length}]`;
     return 'object';
   },
   shortLabel(v) {
     if (isDict(v)) return 'dict';
     if (isTuple(v)) return 'tuple';
+    if (isSet(v)) return 'set';
     if (Array.isArray(v)) return 'list';
     return 'object';
   },
   brackets(v) {
     if (isDict(v)) return ['{', '}'];
     if (isTuple(v)) return ['(', ')'];
+    if (isSet(v)) return ['{', '}'];   // set は JS の配列で表す（sequence）。かっこだけ { }
     if (Array.isArray(v)) return ['[', ']'];
     return ['{', '}'];
   },

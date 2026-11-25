@@ -81,3 +81,26 @@ test('ADR-004 例5：print(..., end=" ") の出力はコンソールで 1 行に
   dbg.cursor = dbg.trace.length;
   assert.deepEqual(joinForView(dbg.getConsoleOutput()).map(l => l.text), ['0 1 2 ']);
 });
+
+// ── ADR-005：Python の対象拡大（基本）で、CPython と違う・PyVisualizer 独自の見え方 ─────────────
+
+test('ADR-005 例1：内包表記は「人」のステップで各回に止まり、終わるとループ変数は残らない', () => {
+  const dbg = new PyDebugger('squares = [x * x for x in range(3)]\n');
+  const xs = [];
+  while (!dbg.humanStep().done) {
+    const ev = dbg.getCurrentEvent();
+    if (ev.nodeType === 'LoopBinding') xs.push(ev.env[0].x);
+  }
+  assert.deepEqual(xs, [0, 1, 2]);
+  const last = dbg.trace[dbg.trace.length - 1];
+  assert.equal('x' in last.env[0], false);
+  assert.deepEqual([...last.env[0].squares], [0, 1, 4]);
+});
+
+test('ADR-005 例2：集合は入れた順に表示される（CPython の表示順とは違う）', () => {
+  assert.deepEqual(output('s = {3, 1, 2}\ns.add(0)\nprint(s)\n'), ['{3, 1, 2, 0}']);
+});
+
+test('ADR-005 例3：ジェネレーター式は、その場で全部計算したリストになる', () => {
+  assert.deepEqual(output('g = (x * 2 for x in range(3))\nprint(g, sum(x for x in [1, 2, 3]))\n'), ['[0, 2, 4] 6']);
+});

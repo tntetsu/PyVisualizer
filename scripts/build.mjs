@@ -10,26 +10,38 @@
  * - codemirror・@codemirror/*・@lezer/{common,highlight,lr} は JSVisualizer 側の 1 か所から解決する
  *   （CodeMirror は同じパッケージが 2 つ読み込まれると動かない）
  * - index.html・style.css は JSVisualizer からコピーし、画面の名前を PyVisualizer にする
+ * - マニュアル（manual/manual.html・manual.en.html と manual/ja・manual/en のスクリーンショット）を web/ にコピーする
  *
  *   node scripts/build.mjs          # web/ にビルド
  *   node scripts/build.mjs --serve  # ビルドして http://127.0.0.1:8123/ で配信
  */
 import * as esbuild from 'esbuild';
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const ROOT = resolve(new URL('..', import.meta.url).pathname);
 const JSV = realpathSync(join(ROOT, 'node_modules/js-visualizer'));
 const WEB = join(ROOT, 'web');
 
-/** samples/NN_name.py → { id, label, code } */
+/**
+ * samples/*.py と samples/samples.json（表示名・分類・既定のサンプル）を読む。
+ * samples.json に書いていない .py や、.py のない項目があればエラーにする。
+ * @returns {{ samples: {id, label, code}[], groups: {label, keys}[], defaultSample: string }}
+ */
 export function readSamples() {
-  return readdirSync(join(ROOT, 'samples')).filter(f => f.endsWith('.py')).sort().map(f => {
-    const id = f.replace(/\.py$/, '');
-    const words = id.replace(/^\d+_/, '').split('_');
-    const label = words.map((w, i) => (i === 0 ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
-    return { id, label, code: readFileSync(join(ROOT, 'samples', f), 'utf8') };
-  });
+  const manifest = JSON.parse(readFileSync(join(ROOT, 'samples/samples.json'), 'utf8'));
+  const files = readdirSync(join(ROOT, 'samples')).filter(f => f.endsWith('.py')).map(f => f.replace(/\.py$/, '')).sort();
+  const labels = new Map(manifest.groups.flatMap(g => g.items));
+  const missing = files.filter(id => !labels.has(id));
+  const orphan = [...labels.keys()].filter(id => !files.includes(id));
+  if (missing.length || orphan.length) {
+    throw new Error(`samples/samples.json と samples/*.py が食い違っています（未登録: ${missing.join(', ') || 'なし'}、ファイルなし: ${orphan.join(', ') || 'なし'}）`);
+  }
+  return {
+    samples: files.map(id => ({ id, label: labels.get(id), code: readFileSync(join(ROOT, 'samples', `${id}.py`), 'utf8') })),
+    groups: manifest.groups.map(g => ({ label: g.label, keys: g.items.map(([id]) => id) })),
+    defaultSample: manifest.default,
+  };
 }
 
 const pyVisualizerPlugin = {
@@ -38,8 +50,14 @@ const pyVisualizerPlugin = {
     // 組み込みサンプル
     build.onResolve({ filter: /^virtual:python-samples$/ }, () => ({ path: 'python-samples', namespace: 'virtual' }));
     build.onLoad({ filter: /.*/, namespace: 'virtual' }, () => {
-      const samples = Object.fromEntries(readSamples().map(s => [s.id, { label: s.label, code: s.code }]));
-      return { contents: `export const SAMPLES = ${JSON.stringify(samples)};`, loader: 'js' };
+      const { samples, groups, defaultSample } = readSamples();
+      const map = Object.fromEntries(samples.map(s => [s.id, { label: s.label, code: s.code }]));
+      return {
+        contents: `export const SAMPLES = ${JSON.stringify(map)};\n`
+          + `export const SAMPLE_GROUPS = ${JSON.stringify(groups)};\n`
+          + `export const DEFAULT_SAMPLE = ${JSON.stringify(defaultSample)};\n`,
+        loader: 'js',
+      };
     });
     // JS のエンジンは含めない
     build.onResolve({ filter: /interpreter\.bundle\.js$/ }, () => ({ path: 'js-engine-stub', namespace: 'stub' }));
@@ -62,9 +80,14 @@ export async function build() {
     .replace('<h1 class="app-title">JSVisualizer</h1>', '<h1 class="app-title">PyVisualizer</h1>');
   writeFileSync(join(WEB, 'index.html'), html);
   copyFileSync(join(JSV, 'web/style.css'), join(WEB, 'style.css'));
+  // マニュアル（manual/ が元。「使い方」のボタンが web/manual.html・manual.en.html を開く）
+  for (const f of ['manual.html', 'manual.en.html']) copyFileSync(join(ROOT, 'manual', f), join(WEB, f));
+  for (const lang of ['ja', 'en']) {
+    if (existsSync(join(ROOT, 'manual', lang))) cpSync(join(ROOT, 'manual', lang), join(WEB, 'manual', lang), { recursive: true });
+  }
 
   // ?exercise= / ?code= で読める形でもサンプルを書き出す（確認用）
-  const samples = readSamples();
+  const { samples } = readSamples();
   writeFileSync(join(WEB, 'samples/python.json'), JSON.stringify({ title: 'Python サンプル', codes: samples.map(s => ({ title: s.id, code: s.code })) }, null, 2));
   for (const s of samples) writeFileSync(join(WEB, `samples/${s.id}.json`), JSON.stringify({ title: s.id, code: s.code }));
 

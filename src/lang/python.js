@@ -65,29 +65,22 @@ export const pythonValueModel = {
   },
 };
 
-const SAMPLE_GROUP_KEYS = [
-  { label: '─ Search ─',             keys: ['07_linear_search', '08_binary_search'] },
-  { label: '─ Sort (basic) ─',        keys: ['05_bubble_sort', '06_selection_sort'] },
-  { label: '─ Sort (advanced) ─',     keys: ['09_quick_sort', '10_merge_sort'] },
-  { label: '─ Math / Algorithms ─',   keys: ['03_euclid_loop', '04_euclid_recursive', '02_factorial', '01_fibonacci', '13_fibonacci_dp', '16_big_factorial'] },
-  { label: '─ Data Structures ─',     keys: ['11_sort_dicts', '14_binary_tree', '17_word_count'] },
-  { label: '─ Scope / Python ─',      keys: ['12_closure', '15_python_features'] },
-];
 
 /**
  * Python の言語プロファイルを作る。
- * @param {Object<string, {label: string, code: string}>} samples 組み込みサンプル（ビルドでは samples/*.py から作る）
+ * @param {Object<string, {label: string, code: string}>} samples 組み込みサンプル（ビルドでは samples/*.py と samples.json から作る）
+ * @param {{ groups?: {label: string, keys: string[]}[], defaultSample?: string }} [opts] サンプル選択の分類と既定のサンプル
  * @returns {import('js-visualizer/src/lang/index.js').LanguageProfile}
  */
-export const createPythonProfile = (samples) => ({
+export const createPythonProfile = (samples, { groups, defaultSample } = {}) => ({
   id: 'python',
   name: 'Python',
   Debugger: PyDebugger,
   ExecutionError,
   editorExtension: () => python(),
   samples,
-  sampleGroups: SAMPLE_GROUP_KEYS.map(g => ({ ...g, keys: g.keys.filter(k => k in samples) })),
-  defaultSample: '01_fibonacci' in samples ? '01_fibonacci' : Object.keys(samples)[0],
+  sampleGroups: groups ?? [{ label: '─ Samples ─', keys: Object.keys(samples) }],
+  defaultSample: defaultSample ?? Object.keys(samples)[0],
   // for の各回（LoopBinding）でも行を作る。Python には宣言・++・C 形式の for はない
   traceRowTypes: {
     enter: ['ExpressionStatement', 'IfStatement', 'BreakStatement', 'ContinueStatement'],

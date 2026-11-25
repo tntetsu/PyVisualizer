@@ -1,0 +1,72 @@
+name: Deploy to GitHub Pages
+
+# 公開の判断がつくまでは手動実行だけにする（docs/phase4-report.md）。
+# main への push で公開するときは、次の 2 行を on: に足す：
+#   push:
+#     branches: [main]
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout PyVisualizer
+        uses: actions/checkout@v5
+
+      # package.json の file: 参照に合わせて、兄弟リポジトリを取得する
+      # - js-interpreter: JSInterpreter の作業ブランチ feature/interp-core（共通コア）
+      # - js-visualizer:  JSVisualizer の作業ブランチ feature/multilang（言語プロファイル）
+      # - JSVisualizer の JS のエンジン（web/interpreter.bundle.js）は JSInterpreter の master から作る（テストが import する）
+      - name: Clone sibling repositories
+        run: |
+          git clone --depth 1 --branch feature/interp-core https://github.com/tntetsu/JSInterpreter.git ../JSInterpreter-core
+          git clone --depth 1 https://github.com/tntetsu/JSInterpreter.git ../JSInterpreter
+          git clone --depth 1 --branch feature/multilang https://github.com/tntetsu/JSVisualizer.git ../JSVisualizer-multilang
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Setup Python（CPython との比較テスト用）
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install JSVisualizer dependencies and build its JS engine bundle
+        working-directory: ../JSVisualizer-multilang
+        run: |
+          npm ci
+          npm run build:interp
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: node scripts/build.mjs
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: web/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

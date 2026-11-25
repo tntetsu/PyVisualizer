@@ -6,6 +6,6 @@
  */
 import { setLanguage } from 'js-visualizer/src/lang/index.js';
 import { createPythonProfile } from './lang/python.js';
-import { SAMPLES } from 'virtual:python-samples';
+import { SAMPLES, SAMPLE_GROUPS, DEFAULT_SAMPLE } from 'virtual:python-samples';
 
-setLanguage(createPythonProfile(SAMPLES));
+setLanguage(createPythonProfile(SAMPLES, { groups: SAMPLE_GROUPS, defaultSample: DEFAULT_SAMPLE }));

@@ -1,0 +1,24 @@
+{
+  "groups": [
+    { "label": "─ Search ─", "items": [
+      ["07_linear_search", "Linear Search"], ["08_binary_search", "Binary Search"] ] },
+    { "label": "─ Sort (basic) ─", "items": [
+      ["05_bubble_sort", "Bubble Sort"], ["06_selection_sort", "Selection Sort"] ] },
+    { "label": "─ Sort (advanced) ─", "items": [
+      ["09_quick_sort", "Quick Sort"], ["10_merge_sort", "Merge Sort"] ] },
+    { "label": "─ Sort (dicts) ─", "items": [
+      ["11_sort_dicts", "Sort dicts (numeric key)"], ["18_sort_by_string_key", "Sort dicts (string key)"] ] },
+    { "label": "─ Math / Algorithms ─", "items": [
+      ["03_euclid_loop", "Euclid GCD (loop)"], ["04_euclid_recursive", "Euclid GCD (recursive)"],
+      ["02_factorial", "Factorial (recursive)"], ["01_fibonacci", "Fibonacci (recursive)"],
+      ["13_fibonacci_dp", "Fibonacci (DP)"], ["16_big_factorial", "Big integers (factorial)"] ] },
+    { "label": "─ Data Structures ─", "items": [
+      ["14_binary_tree", "Binary Tree (dict)"], ["19_linked_list", "Linked List (dict)"], ["17_word_count", "Word Count (dict)"] ] },
+    { "label": "─ Scope / Python ─", "items": [
+      ["12_closure", "Closure (nonlocal)"], ["15_python_features", "Python features (f-string, slice, …)"] ] },
+    { "label": "─ Study Tasks ─", "items": [
+      ["20_study_warmup", "[Warm-up] Factorial (loop)"], ["21_study_task1", "[Task 1] Selection Sort — find the bug"],
+      ["22_study_task2", "[Task 2] Fibonacci — count function calls"], ["23_study_task3", "[Task 3] Bubble Sort — trace intermediate state"] ] }
+  ],
+  "default": "01_fibonacci"
+}

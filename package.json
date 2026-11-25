@@ -8,13 +8,14 @@
     "test": "node --test \"tests/**/*.test.js\""
   },
   "dependencies": {
+    "@codemirror/lang-python": "^6.2.1",
     "@lezer/common": "^1.5.6",
     "@lezer/python": "^1.1.19",
     "js-interpreter": "file:../JSInterpreter-core"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
-    "js-visualizer": "file:../JSVisualizer",
+    "js-visualizer": "file:../JSVisualizer-multilang",
     "playwright": "1.60"
   }
 }

@@ -17,7 +17,7 @@
 
 [BhvVisualizer](../BhvVisualizer)（学習ログの収集・分析）と組み合わせて授業で使えるようにすることも目標です。
 
-**現在のステータス**: Phase 0（スパイク）・Phase 1（共通コアの切り出し）・Phase 2（Python エンジン MVP）完了（2026-11-25）。報告書は [docs/phase0-report.md](docs/phase0-report.md)・[docs/phase1-report.md](docs/phase1-report.md)・[docs/phase2-report.md](docs/phase2-report.md)。パーサーは Lezer で確定。共通コア `js-interpreter/core` は JSInterpreter の作業ブランチ `feature/interp-core`（JSInterpreter の ADR-015）。Python の値の表現は [ADR-002](docs/adr/ADR-002-python-value-representation.md)、トレースへの追加（LoopBinding・callId・出力の断片）は [ADR-003](docs/adr/ADR-003-python-trace-additions.md)。方針（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 3（フロントエンドの言語非依存化、JSVisualizer の作業ブランチで）。
+**現在のステータス**: Phase 0〜3 完了（2026-11-25）。報告書は [docs/phase0-report.md](docs/phase0-report.md)〜[docs/phase3-report.md](docs/phase3-report.md)。パーサーは Lezer で確定。共通コア `js-interpreter/core` は JSInterpreter の作業ブランチ `feature/interp-core`（JSInterpreter の ADR-015）。フロントエンドは JSVisualizer の作業ブランチ `feature/multilang` の言語プロファイル（JSVisualizer の ADR-055）を使い、Python のプロファイルは [src/lang/python.js](src/lang/python.js)（[ADR-004](docs/adr/ADR-004-python-display-in-frontend.md)）。Python の値の表現は [ADR-002](docs/adr/ADR-002-python-value-representation.md)、トレースへの追加は [ADR-003](docs/adr/ADR-003-python-trace-additions.md)。方針（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 4（PyVisualizer アプリ：マニュアル・サンプルの見直し・デプロイ）。
 
 ## 関連リポジトリ
 
@@ -31,6 +31,9 @@
 
 ```
 PyVisualizer/
+├── src/app.js                # PyVisualizer の入口（register-python.js → JSVisualizer の app.js の順に import）
+├── src/register-python.js    # JSVisualizer のフロントエンドに Python の言語プロファイルを登録する
+├── src/lang/python.js        # Python の言語プロファイル（エンジン・エディタ・色分け・実行トレースの行・valueModel。ADR-004）
 ├── src/engine/               # Python エンジン（Phase 0 のスパイクで作成、Phase 2 の土台）
 │   ├── parse.js              # Lezer の木 → AST、インデントの検査、構文エラーの日本語説明
 │   ├── interpreter.js        # 評価器（LEGB スコープ・Python の演算）。js-interpreter/core の Recorder・Scope 等を使う
@@ -48,7 +51,7 @@ PyVisualizer/
 │   ├── tools/trace_states.py # CPython で sys.settrace を使い、変数の状態の変化の列を JSON で出す
 │   └── cases/                # 意味論・例外の比較用の Python プログラム
 ├── scripts/
-│   ├── build-spike.mjs       # JSVisualizer のフロントエンドに Python エンジンを差し込んで web/ にビルド
+│   ├── build.mjs             # web/ にビルド（JSVisualizer のフロントエンド＋Python のプロファイル。CodeMirror の重複を避ける）
 │   ├── capture-spike.mjs     # 全サンプル × 全タブのスクリーンショットとブラウザのエラーを収集
 │   ├── compare-js-core.mjs   # JSInterpreter の master と作業ブランチで JS のトレースを 1 件ずつ比べる
 │   └── capture-js-dom.mjs    # JSVisualizer（JS 版）の全サンプル・全タブの画面の状態を記録し、2 つのビルドを比べる（Phase 3）
@@ -58,6 +61,7 @@ PyVisualizer/
 │   ├── phase0-report.md      # Phase 0 の報告書（共通化の検証、ビューごとの問題、Lezer の評価）
 │   ├── phase1-report.md      # Phase 1 の報告書（共通コアの中身、Phase 0 の項目の解消、検証の方法）
 │   ├── phase2-report.md      # Phase 2 の報告書（辞書・大きな整数・連続代入、変数の状態の比較テスト）
+│   ├── phase3-report.md      # Phase 3 の報告書（言語プロファイル、JS 版の画面の一致の確認、Python 版の画面）
 │   ├── phase0/               # 報告書のスクリーンショット
 │   └── adr/                  # Architecture Decision Records（ADR-001〜）
 ├── CLAUDE.md                 # このファイル
@@ -70,12 +74,12 @@ PyVisualizer/
 ```bash
 npm install                            # 兄弟ディレクトリに ../JSInterpreter-core・../JSVisualizer が必要（file: 依存。下記）
 npm test                               # 全テスト（node:test。CPython との比較に python3 が必要）
-node scripts/build-spike.mjs --serve   # http://127.0.0.1:8123/?exercise=/samples/python.json で確認
+node scripts/build.mjs --serve         # http://127.0.0.1:8123/ で確認
 node scripts/capture-spike.mjs <出力先> [サンプルid...]   # スクリーンショットの収集
 node scripts/compare-js-core.mjs       # JSInterpreter の master と作業ブランチで JS のトレースが一致するか
 ```
 
-> **依存先**：`js-interpreter` は JSInterpreter の作業ブランチ `feature/interp-core` を指す（`file:../JSInterpreter-core`。`git -C ../JSInterpreter worktree add ../JSInterpreter-core feature/interp-core` で作る）。共通コア（`js-interpreter/core`）は main（master）にはまだない（学期後にマージ）。`js-visualizer` は `file:../JSVisualizer`（main のまま。Phase 3 で作業ブランチに切り替える）。
+> **依存先**：`js-interpreter` は JSInterpreter の作業ブランチ `feature/interp-core` を指す（`file:../JSInterpreter-core`。`git -C ../JSInterpreter worktree add ../JSInterpreter-core feature/interp-core` で作る）。共通コア（`js-interpreter/core`）は main（master）にはまだない（学期後にマージ）。`js-visualizer` は JSVisualizer の作業ブランチ `feature/multilang` を指す（`file:../JSVisualizer-multilang`。`git -C ../JSVisualizer worktree add ../JSVisualizer-multilang feature/multilang` で作る。言語プロファイルは main にはまだない）。
 
 > テストは Jest ではなく Node 標準の `node:test` を使う（ES modules のまま追加の設定なしで動くため）。
 

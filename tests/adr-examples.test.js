@@ -37,3 +37,47 @@ test('ADR-003 例：for の各回で「人」のステップが止まり、ル�
     '2行目 i=2 total=1', '3行目 i=2 total=3',
   ]);
 });
+
+// ── ADR-004：JSVisualizer の画面での Python の値・行・出力の見せ方 ─────────────
+import { setLanguage } from 'js-visualizer/src/lang/index.js';
+import { formatValue } from 'js-visualizer/src/utils/format.js';
+import { TraceBuilder } from 'js-visualizer/src/core/trace-builder.js';
+import { joinConsoleLines as joinForView } from 'js-visualizer/src/utils/console-lines.js';
+import { createPythonProfile } from '../src/lang/python.js';
+
+setLanguage(createPythonProfile({}));
+
+/** プログラムを最後まで実行したときの変数 name の、変数ビューでの表示（HTML のタグを除く） */
+const shown = (src, name) => {
+  const dbg = new PyDebugger(src);
+  const last = dbg.trace[dbg.trace.length - 1];
+  return formatValue(last.env[0][name]).replace(/<[^>]+>/g, '');
+};
+
+test('ADR-004 例1：小数は 79.0 と表示される', () => {
+  assert.equal(shown('avg = sum([72, 88, 95, 61]) / 4\n', 'avg'), '79.0');
+});
+
+test('ADR-004 例2：真偽値・None・文字列は Python の書き方で表示される', () => {
+  const src = 'found = 3 > 5\nx = None\ns = "the"\n';
+  assert.deepEqual(['found', 'x', 's'].map(n => shown(src, n)), ['False', 'None', "'the'"]);
+});
+
+test('ADR-004 例3：辞書とタプルは中身が Python の書き方で表示される', () => {
+  assert.equal(shown('d = {"a": 1, 2: None}\n', 'd'), "{ 'a': 1, 2: None }");
+  assert.equal(shown('t = (1, "x")\n', 't'), "(1, 'x')");
+});
+
+test('ADR-004 例4：実行トレースに for の行が、range(3) を求める 1 回と各回の 3 回現れる', () => {
+  const src = 'total = 0\nfor i in range(3):\n    total += i\n';
+  const dbg = new PyDebugger(src);
+  const rows = [...new TraceBuilder(dbg.trace, src, dbg.ast).buildHumanIndices()].sort((a, b) => a - b)
+    .map(i => dbg.trace[i]).filter(ev => ev.loc.line === 2).map(ev => ev.env[0].i ?? '-');
+  assert.deepEqual(rows, ['-', 0, 1, 2]);
+});
+
+test('ADR-004 例5：print(..., end=" ") の出力はコンソールで 1 行につながる', () => {
+  const dbg = new PyDebugger('for i in range(3):\n    print(i, end=" ")\nprint()\n');
+  dbg.cursor = dbg.trace.length;
+  assert.deepEqual(joinForView(dbg.getConsoleOutput()).map(l => l.text), ['0 1 2 ']);
+});

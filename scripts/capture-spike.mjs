@@ -1,5 +1,5 @@
 /**
- * capture-spike.mjs — Phase 0：全サンプル×全タブのスクリーンショットとブラウザのエラーを集める
+ * capture-spike.mjs — 全サンプル×全タブのスクリーンショットとブラウザのエラーを集める（Phase 0 で作成、Phase 3 から scripts/build.mjs を使う）
  *
  *   node scripts/capture-spike.mjs <出力ディレクトリ> [サンプルid...]
  *
@@ -9,14 +9,14 @@ import * as esbuild from 'esbuild';
 import { chromium } from 'playwright';
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { buildSpike } from './build-spike.mjs';
+import { build } from './build.mjs';
 
 const ROOT = resolve(new URL('..', import.meta.url).pathname);
 const OUT = resolve(process.argv[2] ?? 'spike-shots');
 const only = process.argv.slice(3);
 mkdirSync(OUT, { recursive: true });
 
-const codes = await buildSpike();
+const codes = await build();
 const pyCtx = await esbuild.context({});
 const py = await pyCtx.serve({ servedir: join(ROOT, 'web'), host: '127.0.0.1', port: 8124 });
 const jsCtx = await esbuild.context({});

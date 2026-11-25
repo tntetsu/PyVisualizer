@@ -209,6 +209,14 @@ function unescape(body, isRaw) {
 
 const COMPARE_OPS = new Set(['<', '>', '<=', '>=', '==', '!=', 'in', 'not in', 'is', 'is not']);
 
+/** 文（と Program・except 節）のノード型。end を付けない（ADR-008） */
+const STATEMENT_TYPES = new Set([
+  'Program', 'BlockStatement', 'ExpressionStatement', 'IfStatement', 'WhileStatement', 'ForOfStatement',
+  'FunctionDeclaration', 'ClassDeclaration', 'ReturnStatement', 'EmptyStatement', 'BreakStatement',
+  'ContinueStatement', 'GlobalStatement', 'TryStatement', 'ExceptHandler', 'ImportStatement',
+  'ImportFromStatement', 'RaiseStatement', 'DeleteStatement', 'AssertStatement',
+]);
+
 /**
  * @param {string} src
  * @returns {object} Program ノード
@@ -230,7 +238,10 @@ export function parse(src) {
     for (let c = n.firstChild; c; c = c.nextSibling) if (c.name !== 'Comment') out.push(c);
     return out;
   };
-  const mk = (type, from, to, props) => ({ type, ...props, loc: pm.loc(from), end: pm.end(to), range: [from, to] });
+  // end（式の終わりの位置）は式にだけ付ける。JS のパーサーと同じく、文には付けない。
+  // コード表示は end のあるイベントの範囲をオレンジ（評価中の式）にするため、文にも付けると
+  // 実行した直後（Program）や if・for・def に止まったときに、ブロック全体がオレンジになる（ADR-008）
+  const mk = (type, from, to, props) => ({ type, ...props, loc: pm.loc(from), end: STATEMENT_TYPES.has(type) ? null : pm.end(to), range: [from, to] });
   const unsupported = (what, n) => { const p = pm.loc(n.from); throw new PyUnsupportedError(what, p.line, p.column); };
   const isTok = (n, ...names) => names.includes(n.name);
 

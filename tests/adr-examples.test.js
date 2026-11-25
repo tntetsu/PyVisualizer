@@ -172,3 +172,39 @@ test('ADR-007 例3：import できるのは math だけで、ほかのモジュ�
     return true;
   });
 });
+
+// ── ADR-008：コード表示のオレンジ（評価中の式）は式にだけ付ける ─────────────
+
+/**
+ * 式単位で最初から最後まで進め、各ステップでコード表示にオレンジで示される文字列を返す
+ * （コード表示は、イベントに end があるときだけ loc〜end をオレンジにする。JSVisualizer の views/code-view）
+ */
+const orangeAtEachStep = (src) => {
+  const lines = src.split('\n');
+  const text = (loc, end) => loc.line === end.line
+    ? lines[loc.line - 1].slice(loc.column - 1, end.column)
+    : [lines[loc.line - 1].slice(loc.column - 1), ...lines.slice(loc.line, end.line - 1), lines[end.line - 1].slice(0, end.column)].join('\n');
+  const dbg = new PyDebugger(src);
+  const shown = [];
+  for (;;) {
+    const ev = dbg.getCurrentEvent();
+    shown.push(ev?.loc && ev?.end ? text(ev.loc, ev.end) : null);
+    if (dbg.cursor >= dbg.trace.length - 1) break;
+    dbg.stepIn();
+  }
+  return shown;
+};
+
+const ADR008_SRC = 'total = 0\nfor i in range(2):\n    if i > 0:\n        total += i\nprint(total)\n';
+
+test('ADR-008 例1：実行した直後は、コードにオレンジの範囲が表示されない', () => {
+  assert.equal(orangeAtEachStep(ADR008_SRC)[0], null);
+});
+
+test('ADR-008 例2：for 文・if 文に止まっても、文全体はオレンジにならない（オレンジは式だけ）', () => {
+  const shown = new Set(orangeAtEachStep(ADR008_SRC).filter(s => s !== null));
+  assert.deepEqual([...shown].filter(s => s.includes('\n')), []);
+  assert.deepEqual([...shown].sort(), [
+    '0', '2', 'i', 'i > 0', 'print', 'print(total)', 'range', 'range(2)', 'total', 'total += i', 'total = 0',
+  ]);
+});

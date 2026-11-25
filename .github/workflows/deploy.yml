@@ -1,10 +1,9 @@
 name: Deploy to GitHub Pages
 
-# Phase 5 の完了時に公開するまでは手動実行だけにする（docs/development-plan.md 6 節の決定 5・6.2 節）。
-# main への push で公開するときは、次の 2 行を on: に足す：
-#   push:
-#     branches: [main]
+# main への push と手動実行で公開する（docs/development-plan.md 6 節の決定 5・6.2 節）。
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

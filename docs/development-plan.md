@@ -115,7 +115,7 @@ Python のコードを JS の AST に変換して JSInterpreter の評価器で�
 
 ## 3. フェーズ計画
 
-**運用上の制約**：JSVisualizer と BhvVisualizer は「ソフトウェア基礎論」で本番稼働中（2026-09-30〜）。ITiCSE2027 の投稿（2027年1月頃）も控えている。JSInterpreter・JSVisualizer に手を入れるフェーズ（1・3）は**ブランチで進め、main へのマージは学期後（2027年2月以降）**とする（6 節の決定 3）。
+**運用上の制約**：JSVisualizer と BhvVisualizer は「ソフトウェア基礎論」で本番稼働中（2026-09-30〜）。JSInterpreter・JSVisualizer に手を入れるフェーズ（1・3）は**ブランチで進め、main へのマージは学期後（2027年2月以降）**とする（6 節の決定 3）。
 
 | Phase | 内容 | 主な成果物 | 完了条件 |
 |---|---|---|---|
@@ -123,7 +123,7 @@ Python のコードを JS の AST に変換して JSInterpreter の評価器で�
 | **1. 共通コアの切り出し**（JSInterpreter）✅ 2026-11-24 完了 | `Recorder`・`TraceDebugger`（ステップ操作・humanStep をノード分類表で）・`Scope`・クローンの hook・出力の断片（`write()`）を `src/core/` に切り出した。JS の部品はその派生クラスにし、挙動は変えていない。Python エンジンは Phase 0 の回避策をすべて外してコアの API に乗せ換え、`for x in` の各回で止まるようにした（`LoopBinding`） | `js-interpreter/core`（作業ブランチ `feature/interp-core`、worktree `../JSInterpreter-core`。JSInterpreter の ADR-015）、[phase1-report.md](phase1-report.md) | JSInterpreter のテスト 284 件（既存 266＋コア 18）が通り、master と作業ブランチのトレースが 194 プログラム・約 24 万イベントで一致（`scripts/compare-js-core.mjs`） |
 | **2. Python エンジン MVP**（PyVisualizer）✅ 2026-11-25 完了 | 4.1 節の範囲を実装。辞書を `PyDict` に作り直し（キーの型と挿入順）、大きな整数（BigInt）、連続代入。行単位の変数の状態を CPython と比べるテストを追加 | `src/engine/`、[phase2-report.md](phase2-report.md)、ADR-002・003 | CPython との比較（出力 31 件・変数の状態 23 件）を含む 95 件がすべて通る |
 | **3. フロントエンドの言語非依存化**（JSVisualizer）✅ 2026-11-25 完了 | 言語プロファイル（エンジン・エディタ・サンプル・色分け・実行トレースの行・値の見せ方 `valueModel`）を入れ、コンソールが出力の断片を行にまとめるようにした。PyVisualizer は Python のプロファイルを登録して動く（停止点の統一はしなかった。理由は [phase3-report.md](phase3-report.md) 2.3 節） | JSVisualizer の作業ブランチ `feature/multilang`（worktree `../JSVisualizer-multilang`、JSVisualizer の ADR-055）、PyVisualizer の ADR-004、[phase3-report.md](phase3-report.md) | JS 版の画面の HTML が main と一致（`scripts/capture-js-dom.mjs`）、JSVisualizer のテスト 213 件・PyVisualizer のテスト 104 件が通る |
-| **4. PyVisualizer アプリ**（公開以外は ✅ 2026-11-25） | サンプル 23 本（`samples/samples.json` で表示名・分類）、全サンプル × 全タブの確認、Python 版のマニュアル（日本語・英語）、GitHub Pages のワークフロー（手動実行のみ。公開は判断待ち） | [phase4-report.md](phase4-report.md) | 全サンプル × 全タブでブラウザのエラー 0 件、テスト 122 件が通る。公開は未実施 |
+| **4. PyVisualizer アプリ** ✅ 2026-11-25 完了（公開は Phase 5 の後、2026-11-25） | サンプル 23 本（`samples/samples.json` で表示名・分類）、全サンプル × 全タブの確認、Python 版のマニュアル（日本語・英語）、GitHub Pages のワークフロー（手動実行のみ。公開は判断待ち） | [phase4-report.md](phase4-report.md) | 全サンプル × 全タブでブラウザのエラー 0 件、テスト 122 件が通る。公開は未実施 |
 | **5. Python の対象拡大** ✅ 2026-11-25 完了 | 基本の拡張（内包表記・set・del・スライスへの代入・ループの else・% 書式・*args/**kwargs）、例外（try/except/else/finally・raise・assert）、class（継承・super()・特殊メソッド）、import math と input()（画面の入力欄）。ジェネレーターは対象外 | [phase5-report.md](phase5-report.md)、ADR-005〜007 | CPython との比較（出力 58 件・変数の状態 37 件）を含む 166 件がすべて通る |
 | **6. BhvVisualizer 連携** | 2.5 節の変更 | | 既存の e2e（exercise-flow・viewer-host・analysis-dashboard）＋ Python のコードを使う e2e が通る |
 | 7.（将来）Java / C++ | 同じ手順でエンジンを追加 | | |
@@ -168,7 +168,7 @@ Python の LEGB 規則に従う。関数本体の中で代入される名前は�
 | 3 | JSVisualizer・JSInterpreter への変更をマージする時期 | **学期後（2027年2月以降）**。それまではブランチで進める（6.1 節） |
 | 4 | MVP の対象範囲 | 4.1 節の範囲。現時点で授業で使う予定はない |
 
-| 5 | PyVisualizer の公開（GitHub Pages） | **Phase 5 の完了時に公開する**（2026-11-25）。公開の前に、README.md・マニュアルなどを公開にふさわしい内容にする（JSVisualizer のリポジトリと同程度。6.2 節） |
+| 5 | PyVisualizer の公開（GitHub Pages） | **Phase 5 の完了時に公開する**（2026-11-25）。公開の前に、README.md・マニュアルなどを公開にふさわしい内容にする（JSVisualizer のリポジトリと同程度。6.2 節）。**リポジトリも公開する**（2026-11-25。非公開のまま有料のプランで Pages を使う案は採らない） |
 
 ### 6.1 決定を受けた進め方
 
@@ -187,11 +187,10 @@ JSVisualizer のリポジトリと同程度にする。JSVisualizer には次の
 - 画像（`img/`）
 - 利用者向けマニュアル（日本語・英語）
 
-PyVisualizer では次を行う。
+PyVisualizer では次を行った（2026-11-25）。
 
-- README.md を日本語・英語で書く（今は 13 行の短いもの）
-- マニュアルを Phase 5 で増えた範囲に合わせる
-- 公開してよい文書かを見直す（計画書・報告書には授業の運用の記述がある）
-- リポジトリを公開するか、非公開のまま有料のプランで Pages を使うかを決める（[phase4-report.md](phase4-report.md) 4 節）
-- ワークフローの `push` のトリガーを有効にする
-
+- README.md・README.en.md を書いた（JSVisualizer の README と同程度）
+- マニュアルは Phase 5 で増えた範囲に合わせてある（Phase 5 で更新済み）
+- 公開してよい文書かを見直した。授業の運用の記述は、公開中の JSVisualizer のリポジトリと同程度なのでそのままにした。論文の投稿の予定の記述は、今のファイルから消した（履歴には残る。履歴は書き換えないと決めた）
+- リポジトリを公開すると決めた（決定 5）
+- ワークフローの `push` のトリガーを有効にした（`main` への push で公開する）

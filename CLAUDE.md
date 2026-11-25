@@ -17,7 +17,7 @@
 
 [BhvVisualizer](../BhvVisualizer)（学習ログの収集・分析）と組み合わせて授業で使えるようにすることも目標です。
 
-**現在のステータス**: Phase 0〜5 完了（2026-11-25。Phase 4 の公開を除く）。次は**公開の準備**：README.md・マニュアルなどを JSVisualizer のリポジトリと同程度に整えてから公開する（[docs/development-plan.md](docs/development-plan.md) 6 節の決定 5・6.2 節）。報告書は [docs/phase0-report.md](docs/phase0-report.md)〜[docs/phase5-report.md](docs/phase5-report.md)。パーサーは Lezer で確定。共通コア `js-interpreter/core` は JSInterpreter の作業ブランチ `feature/interp-core`（JSInterpreter の ADR-015）。フロントエンドは JSVisualizer の作業ブランチ `feature/multilang` の言語プロファイル（JSVisualizer の ADR-055）を使い、Python のプロファイルは [src/lang/python.js](src/lang/python.js)（[ADR-004](docs/adr/ADR-004-python-display-in-frontend.md)）。Python の値の表現は [ADR-002](docs/adr/ADR-002-python-value-representation.md)、トレースへの追加は [ADR-003](docs/adr/ADR-003-python-trace-additions.md)、Phase 5 で入れた機能は ADR-005〜007。方針：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、BhvVisualizer 連携（Phase 6）は後回し。
+**現在のステータス**: Phase 0〜5 完了・公開済み（2026-11-25）。リポジトリも公開し、`main` への push で GitHub Pages（https://tntetsu.github.io/PyVisualizer/）に公開される（[docs/development-plan.md](docs/development-plan.md) 6 節の決定 5・6.2 節）。報告書は [docs/phase0-report.md](docs/phase0-report.md)〜[docs/phase5-report.md](docs/phase5-report.md)。パーサーは Lezer で確定。共通コア `js-interpreter/core` は JSInterpreter の作業ブランチ `feature/interp-core`（JSInterpreter の ADR-015）。フロントエンドは JSVisualizer の作業ブランチ `feature/multilang` の言語プロファイル（JSVisualizer の ADR-055）を使い、Python のプロファイルは [src/lang/python.js](src/lang/python.js)（[ADR-004](docs/adr/ADR-004-python-display-in-frontend.md)）。Python の値の表現は [ADR-002](docs/adr/ADR-002-python-value-representation.md)、トレースへの追加は [ADR-003](docs/adr/ADR-003-python-trace-additions.md)、Phase 5 で入れた機能は ADR-005〜007。方針：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、BhvVisualizer 連携（Phase 6）は後回し。
 
 ## 関連リポジトリ
 
@@ -44,7 +44,7 @@ PyVisualizer/
 │   └── py-debugger.js        # PyDebugger（TraceDebugger の派生、PY_NODE_CATEGORIES。debugger-adapter.js が使う名前でも export）
 ├── samples/                  # Python のサンプル 27 本（JSVisualizer の組み込みサンプルに対応）と samples.json（表示名・分類・既定。ビルドが食い違いを検出する）
 ├── manual/                   # 利用者向けマニュアル（manual.html・manual.en.html と ja/・en/ のスクリーンショット）。ビルドが web/ にコピーする
-├── .github/workflows/deploy.yml  # GitHub Pages へのデプロイ（Phase 5 の完了時に公開するまで手動実行のみ。兄弟リポジトリの作業ブランチを clone してビルド）
+├── .github/workflows/deploy.yml  # GitHub Pages へのデプロイ（main への push と手動実行。兄弟リポジトリの作業ブランチを clone してビルド）
 ├── tests/
 │   ├── oracle.test.js        # CPython（python3）を正解とした比較（samples/ と tests/cases/）
 │   ├── parse.test.js         # 構文エラーの検出と説明、AST の形
@@ -72,7 +72,7 @@ PyVisualizer/
 │   ├── phase0/               # 報告書のスクリーンショット
 │   └── adr/                  # Architecture Decision Records（ADR-001〜）
 ├── CLAUDE.md                 # このファイル
-├── README.md
+├── README.md / README.en.md
 └── LICENSE
 ```
 

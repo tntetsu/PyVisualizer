@@ -7,10 +7,12 @@ PyVisualizer（Python 版）を作った経験をもとに、Java・C・C++・Ty
 | 対象 | 置き場所 | 進め方 |
 |---|---|---|
 | Java | 新しいリポジトリ **JavaVisualizer** | 評価器を新しく書く。PyVisualizer と同じ構成 |
-| C と C++ | 新しいリポジトリ 1 つ（名前は 7 節で決める） | 評価器を 1 つ書き、言語プロファイルを C と C++ の 2 つにする。**C を先に作り、C++ はその上に足す** |
+| C と C++ | 新しいリポジトリ **CppVisualizer**（C 版も含む） | 評価器を 1 つ書き、言語プロファイルを C と C++ の 2 つにする。**C を先に作り、C++ はその上に足す**。C 版のサイトは `…/CppVisualizer/c/`、C++ 版は `…/CppVisualizer/`（ツールの名前は CVisualizer・CppVisualizer） |
 | TypeScript | **JSInterpreter**（JS の仲間） | JS の評価器を使い、型は読み飛ばす。JS の Lezer 化の上に足す |
 | JS の Lezer 化 | **JSInterpreter** | 手書きのパーサーを Lezer（`@lezer/javascript`）に置き換える。授業で使っているので、作業ブランチで進めて学期後にマージ |
 | 共通の土台（共通コア・画面） | 今は JSInterpreter・JSVisualizer の作業ブランチ | 各言語は**タグかコミットで固定して参照**する。学期後に独立させる（3 節） |
+
+**名前の規則**（2026-11-25 決定）：ツールの名前は、その言語のファイルの拡張子にそろえる。JSVisualizer（`.js`）・PyVisualizer（`.py`）・TSVisualizer（`.ts`）・CVisualizer（`.c`）・CppVisualizer（`.cpp`）・JavaVisualizer（`.java`）。`Jv`・`Jav` のような広く使われていない略は使わない（言語が分かりにくく、つづりを推測しにくく、検索しにくい）。
 
 C と C++ を 1 つにする理由：
 
@@ -150,8 +152,8 @@ JS の Lezer 化を学期後にするのは、授業の JS 版に影響しうる
 | # | 論点 | 選択肢 | 推奨 |
 |---|---|---|---|
 | 1 | 学期中に始める言語 | Java／C | どちらでもよい。Java は静的型の土台（型・あふれ・クラス）を、C はメモリのモデルを先に作れる。授業で使う予定がある方を先にする |
-| 2 | C と C++ のリポジトリの名前 | `CVisualizer`（C++ も含む）／`CppVisualizer`（C も含む）／両方を表す名前 | サイトの名前と合わせて決める |
-| 3 | サイトを言語ごとに分けるか | 言語ごと（PyVisualizer と同じ）／1 つのサイトで言語を切り替える | 授業・論文で言語ごとに URL を配るなら、言語ごと。C と C++ は 1 つのサイトで切り替えてもよい |
+| 2 | C と C++ のリポジトリの名前 | 1 つのリポジトリで C 版を下の階層に置く（案 1）／C 版のサイトだけの小さなリポジトリ CVisualizer を別に作る（案 2） | **決定（2026-11-25）：案 1**。リポジトリは CppVisualizer。C 版は `…/CppVisualizer/c/` で公開し、ツールの名前は CVisualizer と呼ぶ |
+| 3 | サイトを言語ごとに分けるか | 言語ごと（PyVisualizer と同じ）／1 つのサイトで言語を切り替える | **決定（2026-11-25）：言語ごと**（Java は JavaVisualizer、C と C++ は CppVisualizer の中の 2 つのサイト）。TypeScript は 4 で決める |
 | 4 | TypeScript のサイト | JSVisualizer の中で言語として選ぶ／別のサイト | 学期後の土台の整理（3.2 節）と一緒に決める |
 | 5 | TypeScript の型の誤り | 出さない（型を読み飛ばすだけ）／`tsc` と同じ型検査をする | まずは出さない。型検査は大きな作業 |
 | 6 | 土台の独立のしかた | 3.2 節の案 A／案 B | 学期後に決める |

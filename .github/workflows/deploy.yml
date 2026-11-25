@@ -1,6 +1,6 @@
 name: Deploy to GitHub Pages
 
-# 公開の判断がつくまでは手動実行だけにする（docs/phase4-report.md）。
+# Phase 5 の完了時に公開するまでは手動実行だけにする（docs/development-plan.md 6 節の決定 5・6.2 節）。
 # main への push で公開するときは、次の 2 行を on: に足す：
 #   push:
 #     branches: [main]

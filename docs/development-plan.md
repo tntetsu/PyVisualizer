@@ -168,6 +168,8 @@ Python の LEGB 規則に従う。関数本体の中で代入される名前は�
 | 3 | JSVisualizer・JSInterpreter への変更をマージする時期 | **学期後（2027年2月以降）**。それまではブランチで進める（6.1 節） |
 | 4 | MVP の対象範囲 | 4.1 節の範囲。現時点で授業で使う予定はない |
 
+| 5 | PyVisualizer の公開（GitHub Pages） | **Phase 5 の完了時に公開する**（2026-11-25）。公開の前に、README.md・マニュアルなどを公開にふさわしい内容にする（JSVisualizer のリポジトリと同程度。6.2 節） |
+
 ### 6.1 決定を受けた進め方
 
 - **ブランチの置き場所**：JSInterpreter・JSVisualizer の作業ブランチは `git worktree` で別のディレクトリ（例：`../JSInterpreter-core`、`../JSVisualizer-multilang`）に取り出す。元の作業ディレクトリは main のまま残し、授業中の修正はそちらで行う。PyVisualizer の `file:` 依存は worktree 側を指す
@@ -175,3 +177,22 @@ Python の LEGB 規則に従う。関数本体の中で代入される名前は�
 - **PyVisualizer のサイト**：別サイトなので、マージ前でもブランチのフロントエンドを使って公開できる。学生の画面には影響しない
 - **Phase 6（BhvVisualizer 連携）**：授業で使う予定がないため後回しにする。Phase 4 まで終えてから、必要になった時点で着手する
 - **Phase 5（対象拡大）**：授業の演習に合わせる必要がないので、Phase 4 の後に必要なものから進める
+
+### 6.2 公開の前に整えるもの（決定 5）
+
+JSVisualizer のリポジトリと同程度にする。JSVisualizer には次のものがある。
+
+- README.md・README.en.md（それぞれ約 330 行。概要・使い方・ビューの説明・開発の方法など）
+- CITATION.cff、LICENSE
+- 画像（`img/`）
+- 利用者向けマニュアル（日本語・英語）
+
+PyVisualizer では次を行う。
+
+- README.md を日本語・英語で書く（今は 13 行の短いもの）
+- CITATION.cff を足す
+- マニュアルを Phase 5 で増えた範囲に合わせる
+- 公開してよい文書かを見直す（計画書・報告書には授業の運用の記述がある）
+- リポジトリを公開するか、非公開のまま有料のプランで Pages を使うかを決める（[phase4-report.md](phase4-report.md) 4 節）
+- ワークフローの `push` のトリガーを有効にする
+

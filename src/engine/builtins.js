@@ -13,6 +13,7 @@ import {
 
 import {
   ObjectClass, EXCEPTIONS, isClass, isInstance, classLookup, callSpecial, makeException, PyRaise,
+  invoke, isStaticMethod, isClassMethod, isProperty, makeProperty,
 } from './objects.js';
 import { isModule } from './modules.js';
 
@@ -595,6 +596,13 @@ export const BUILTINS = {
   format: def('format', (args, _k, ctx) => { argCount('format', args, 1, 2, ctx.loc); return formatValue(args[0], args[1] ?? '', ctx.loc); }),
   id: def('id', (args) => objectId(args[0])),
   hash: def('hash', (args, _k, ctx) => pyHash(args[0], ctx.loc)),
+  // ── デコレーターで使う組み込み（ADR-012） ──
+  staticmethod: def('staticmethod', (args, _k, ctx) => { argCount('staticmethod', args, 1, 1, ctx.loc); return { __type__: 'PyStaticMethod', fn: args[0], name: args[0]?.name ?? args[0]?.pyName }; }),
+  classmethod: def('classmethod', (args, _k, ctx) => { argCount('classmethod', args, 1, 1, ctx.loc); return { __type__: 'PyClassMethod', fn: args[0], name: args[0]?.name ?? args[0]?.pyName }; }),
+  property: def('property', (args, kwargs, ctx) => { argCount('property', args, 0, 2, ctx.loc); return makeProperty(args[0] ?? kwargs.fget ?? null, args[1] ?? kwargs.fset ?? null); }),
+  open: def('open', (_a, _k, ctx) => {   // ファイルは使えない（ADR-012 で with を入れたので、名前がないエラーより分かりやすくする）
+    throw new PyError('NotImplemented', 'open() によるファイルの読み書きはまだ対応していません（データはプログラムの中に書いてください）', ctx.loc);
+  }),
   exit: def('exit', (args, _k, ctx) => exitProgram(args, ctx)),
   quit: def('quit', (args, _k, ctx) => exitProgram(args, ctx)),
   input: def('input', (args, _k, ctx) => {
@@ -758,13 +766,29 @@ function escRe(s) { return s.replace(/[\]\\^-]/g, '\\$&'); }
 function bindMethod(v, self) {
   const isFn = (v && v.__type__ === 'JSFunction') || typeof v === 'function';
   if (!isFn) return v;
-  return def(`${self.cls?.name ?? typeName(self)}.${v.name ?? v.pyName}`, (args, kwargs, ctx) => ctx.call(v, [self, ...args], kwargs));
+  const owner = isClass(self) ? self.name : self.cls?.name ?? typeName(self);
+  return def(`${owner}.${v.name ?? v.pyName}`, (args, kwargs, ctx) => ctx.call(v, [self, ...args], kwargs));
+}
+
+/** クラスの属性 v を、インスタンス inst（なければクラス cls から）取り出したときの値（staticmethod・classmethod・メソッド。ADR-012） */
+function fromClass(v, cls, inst) {
+  if (isStaticMethod(v)) return v.fn;
+  if (isClassMethod(v)) return bindMethod(v.fn, cls);
+  return inst ? bindMethod(v, inst) : v;
 }
 
 const noAttr = (obj, name, loc) => new PyError('AttributeError', `${typeName(obj)} に ${name} という属性はありません`, loc);
 
 /** obj.name = value */
 export function setAttr(obj, name, value, loc) {
+  if (isInstance(obj)) {
+    const p = classLookup(obj.cls, name);
+    if (isProperty(p)) {   // property への代入は setter を呼ぶ（ADR-012）
+      if (!p.fset) throw new PyError('AttributeError', `${obj.cls.name} の property '${name}' には代入できません（setter がありません）`, loc);
+      invoke(p.fset, [obj, value]);
+      return;
+    }
+  }
   if (isInstance(obj) || isClass(obj)) { obj.attrs[name] = value; return; }
   throw new PyError('AttributeError', `${typeName(obj)} には属性を追加できません`, loc);
 }
@@ -782,27 +806,40 @@ export function getAttr(obj, name, loc) {
     throw new PyError('AttributeError', `モジュール '${obj.name}' に ${name} はありません`, loc);
   }
   if (isInstance(obj)) {
+    const cv = classLookup(obj.cls, name);
+    if (isProperty(cv)) {   // property はインスタンスの属性より先に見る（ADR-012）
+      if (!cv.fget) throw new PyError('AttributeError', `${obj.cls.name} の property '${name}' は読み出せません（getter がありません）`, loc);
+      return invoke(cv.fget, [obj]);
+    }
     if (Object.prototype.hasOwnProperty.call(obj.attrs, name)) return obj.attrs[name];
     if (name === 'args' && obj.args) return obj.args;
     if (name === '__class__') return obj.cls;
     if (name === '__dict__') return makeDict(Object.entries(obj.attrs));
-    const v = classLookup(obj.cls, name);
-    if (v !== undefined) return bindMethod(v, obj);
+    if (cv !== undefined) return fromClass(cv, obj.cls, obj);
     throw noAttr(obj, name, loc);
   }
   if (isClass(obj)) {
     if (name === '__name__') return obj.name;
     const v = classLookup(obj, name);
-    if (v !== undefined) return v;
+    if (v !== undefined) return fromClass(v, obj, null);
+    throw noAttr(obj, name, loc);
+  }
+  if (isProperty(obj)) {   // @x.setter
+    if (name === 'setter') return def('property.setter', (args) => makeProperty(obj.fget, args[0]));
+    if (name === 'getter') return def('property.getter', (args) => makeProperty(args[0], obj.fset));
+    if (name === 'fget') return obj.fget;
+    if (name === 'fset') return obj.fset;
     throw noAttr(obj, name, loc);
   }
   if (obj && obj.__type__ === 'PySuper') {
     const mro = isInstance(obj.self) ? obj.self.cls.mro : obj.self.mro;
     const v = classLookup(isInstance(obj.self) ? obj.self.cls : obj.self, name, mro.indexOf(obj.cls) + 1);
     if (v === undefined) throw new PyError('AttributeError', `super() の先に ${name} という属性はありません`, loc);
-    return bindMethod(v, obj.self);
+    if (isProperty(v)) return invoke(v.fget, [obj.self]);
+    return isInstance(obj.self) ? fromClass(v, obj.self.cls, obj.self) : fromClass(v, obj.self, null);
   }
   if (typeof obj === 'function' && name === '__name__') return obj.pyName ?? obj.name;
+  if (obj?.__type__ === 'JSFunction' && name === '__name__') return obj.name;   // 自作の関数の名前（デコレーターでよく使う。ADR-012）
   const table = isList(obj) ? LIST_METHODS : isStr(obj) ? STR_METHODS : isDict(obj) ? DICT_METHODS : isSet(obj) ? SET_METHODS
     : isTuple(obj) ? { index: LIST_METHODS.index, count: LIST_METHODS.count } : null;
   const m = table && Object.prototype.hasOwnProperty.call(table, name) ? table[name] : null;

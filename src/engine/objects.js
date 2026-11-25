@@ -65,6 +65,14 @@ export const isSubclass = (c, base) => c.mro.includes(base);
 let invoker = null;
 /** 評価器が、ユーザーの関数を呼ぶ関数を渡す（fn, args） => value */
 export function setInvoker(f) { invoker = f; }
+/** Python の関数を呼ぶ（property の getter・setter など。ADR-012） */
+export const invoke = (fn, args) => invoker(fn, args);
+
+/** staticmethod・classmethod・property で包んだもの（ADR-012） */
+export const isStaticMethod = (v) => v != null && v.__type__ === 'PyStaticMethod';
+export const isClassMethod = (v) => v != null && v.__type__ === 'PyClassMethod';
+export const isProperty = (v) => v != null && v.__type__ === 'PyProperty';
+export const makeProperty = (fget, fset) => ({ __type__: 'PyProperty', fget, fset, name: fget?.name ?? fset?.name ?? 'property' });
 
 /** インスタンスのクラスに特殊メソッド name があれば呼んで結果を返す。なければ undefined */
 export function callSpecial(inst, name, args = []) {

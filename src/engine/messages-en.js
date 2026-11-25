@@ -46,6 +46,9 @@ const UNSUPPORTED = [
   [/^この形のスライス$/,                  () => 'this form of slice'],
   [/^この形の辞書の内包表記$/,            () => 'this form of dict comprehension'],
   [/^集合の中の \*$/,                    () => '* inside a set'],
+  [/^デコレーター「(.*)」$/s,             (x) => `the decorator '${x}'`],
+  [/^パターン「(.*)」$/s,                 (x) => `the pattern '${x}'`],
+  [/^async def$/,                        () => "'async def'"],
 ];
 
 /**
@@ -155,6 +158,13 @@ const PATTERNS = [
   [null, /^(\S+) はまだ評価できません$/,                    (t) => `${t} cannot be evaluated yet`],
 
   // ── 属性・モジュール ──
+  [null, /^(.*) の property '(.*)' には代入できません（setter がありません）$/s, (c, n) => `property '${n}' of '${c}' object has no setter`],
+  [null, /^(.*) の property '(.*)' は読み出せません（getter がありません）$/s, (c, n) => `property '${n}' of '${c}' object has no getter`],
+  [null, /^(\S+) は with で使えません（__enter__ と __exit__ がありません）$/, (t) => `'${t}' object does not support the context manager protocol`],
+  [null, /^(.*)\(\) のパターンの位置引数は 1 つまでです$/s,          (c) => `${c}() accepts 1 positional sub-pattern`],
+  [null, /^(.*)\(\) のパターンに位置引数を使うには __match_args__ が必要です$/s, (c) => `${c}() accepts 0 positional sub-patterns`],
+  [null, /^open\(\) によるファイルの読み書きはまだ対応していません（データはプログラムの中に書いてください）$/,
+    () => 'reading and writing files with open() is not supported yet (write the data in the program)'],
   [null, /^super\(\) の先に (.*) という属性はありません$/s,   (n) => `'super' object has no attribute '${n}'`],
   [null, /^(\S+) に (.*) という属性はありません$/s,           (t, n) => `'${t}' object has no attribute '${n}'`],
   [null, /^(\S+) には属性を追加できません$/,                  (t) => `cannot set attributes on '${t}' objects`],

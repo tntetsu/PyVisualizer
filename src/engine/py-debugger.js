@@ -21,7 +21,8 @@ import { setRuntimeLang } from './messages-en.js';
  */
 export const PY_NODE_CATEGORIES = Object.freeze({
   // LoopBinding：for・内包表記の各回のループ変数への代入（ADR-003）。ExceptBinding：except で例外を捕まえたところ（ADR-006）
-  stopOnExit: ['AssignmentExpression', 'ReturnStatement', 'LoopBinding', 'ExceptBinding'],
+  // CaseBinding：match で当てはまった case（ADR-012）。WithBinding：with … as の代入（ADR-012）
+  stopOnExit: ['AssignmentExpression', 'ReturnStatement', 'LoopBinding', 'ExceptBinding', 'CaseBinding', 'WithBinding'],
   call:       ['CallExpression'],
   block:      ['BlockStatement'],
   branch:     ['IfStatement', 'ConditionalExpression'],

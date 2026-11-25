@@ -124,7 +124,7 @@ export function checkIndentation(src) {
     continued = !tripleQuote && /\\\s*$/.test(line.replace(/#.*$/, ''));
     if (trimmed !== '' && !trimmed.startsWith('#') && depth === 0 && !tripleQuote && !continued) {
       // 「if x: pass」のように 1 行で本体まで書いた場合は行末が「:」でないので、次の行に字下げを求めない
-      prevEndsColon = lastSignificant === ':' && HEADER_RE.test(trimmed);
+      prevEndsColon = lastSignificant === ':' && (HEADER_RE.test(trimmed) || SOFT_HEADER_RE.test(trimmed));
       prevHeaderNoColon = HEADER_RE.test(trimmed) && !/:/.test(stripStringsAndComments(trimmed)) ? lineNo : 0;
     }
   }
@@ -136,7 +136,9 @@ function stripStringsAndComments(s) {
 
 // ── 構文エラーの説明（Lezer のエラーノード → 初学者向けの日本語） ─────────────
 
-const HEADER_RE = /^\s*(if|elif|else|while|for|def|class|try|except|finally|with)\b/;
+const HEADER_RE = /^\s*(if|elif|else|while|for|def|class|try|except|finally|with|async)\b/;
+/** match・case はソフトキーワード（変数名にも使える）なので、行末が「:」のときだけ見出しの行とみなす（ADR-012） */
+const SOFT_HEADER_RE = /^\s*(match|case)\b/;
 
 function explainSyntaxError(src, errFrom) {
   const pm = makePosMapper(src);
@@ -215,6 +217,7 @@ const STATEMENT_TYPES = new Set([
   'FunctionDeclaration', 'ClassDeclaration', 'ReturnStatement', 'EmptyStatement', 'BreakStatement',
   'ContinueStatement', 'GlobalStatement', 'TryStatement', 'ExceptHandler', 'ImportStatement',
   'ImportFromStatement', 'RaiseStatement', 'DeleteStatement', 'AssertStatement',
+  'WithStatement', 'DecoratedStatement', 'MatchStatement', 'MatchCase',
 ]);
 
 /**
@@ -226,7 +229,11 @@ export function parse(src) {
   checkIndentation(src);
   const tree = parser.parse(src);
   let firstErr = null;
-  tree.iterate({ enter: n => { if (n.type.isError && !firstErr) firstErr = n.from; } });
+  tree.iterate({ enter: n => {
+    // Lezer は「case str():」「case []:」の空の中身に幅 0 のエラーノードを作る（書き方は正しい）ので、誤りとみなさない（ADR-012）
+    if (n.type.isError && n.from === n.to && n.node.parent?.name === 'LiteralPattern') return;
+    if (n.type.isError && !firstErr) firstErr = n.from;
+  } });
   if (firstErr !== null) {
     const [msg, line] = explainSyntaxError(src, firstErr);
     throw new PySyntaxError(msg, line, 1);
@@ -421,7 +428,16 @@ export function parse(src) {
         const last = finalizer ?? orelse ?? handlers[handlers.length - 1] ?? block_;
         return [mk('TryStatement', n.from, last.range[1], { block: block_, handlers, orelse, finalizer })];
       }
-      case 'WithStatement':     return unsupported('with 文', n);
+      case 'WithStatement': {   // with 式 [as 代入先], ...:（ADR-012）
+        const bodyNode = c.find(k => k.name === 'Body');
+        const items = splitBy(c.slice(1, c.indexOf(bodyNode)).filter(k => !isTok(k, '(', ')')), [',']).filter(g => g.length).map(g => {
+          const asIdx = g.findIndex(k => isTok(k, 'as'));
+          const ctx = exprList(asIdx >= 0 ? g.slice(0, asIdx) : g);
+          return { context: ctx, target: asIdx >= 0 ? exprList(g.slice(asIdx + 1)) : null, loc: ctx.loc, end: pm.end(g[g.length - 1].to) };
+        });
+        const body = block(bodyNode);
+        return [mk('WithStatement', n.from, body.range[1], { items, body })];
+      }
       case 'ImportStatement': {
         // import a [as b], ... / from a import x [as y], ... / from a import *
         const isFrom = isTok(c[0], 'from');
@@ -463,9 +479,118 @@ export function parse(src) {
           test: exprList(groups[0]), msg: groups[1]?.length ? exprList(groups[1]) : null,
         })];
       }
-      case 'MatchStatement':    return unsupported('match 文', n);
-      case 'Decorator':         return unsupported('デコレーター', n);
+      case 'DecoratedStatement': {   // @dec ... def / class（ADR-012）
+        const decorators = c.filter(k => k.name === 'Decorator').map(decorator);
+        const [definition] = stmt(c.find(k => k.name === 'FunctionDefinition' || k.name === 'ClassDefinition'));
+        return [mk('DecoratedStatement', n.from, definition.range[1], { decorators, definition })];
+      }
+      case 'MatchStatement': {   // match 式: case パターン [if 条件]: ...（ADR-012）
+        const bodyIdx = c.findIndex(k => k.name === 'MatchBody');
+        const subject = exprList(c.slice(1, bodyIdx));
+        const cases = kids(c[bodyIdx]).filter(k => k.name === 'MatchClause').map(cl => {
+          const ck = kids(cl);
+          const guardNode = ck.find(k => k.name === 'Guard');
+          const bodyNode = ck.find(k => k.name === 'Body');
+          const patNodes = ck.slice(1, ck.indexOf(guardNode ?? bodyNode));
+          const pats = splitBy(patNodes, [',']).filter(g => g.length).map(g => pattern(g[0]));
+          // 「case a, b:」（括弧のない並び）は並びのパターン
+          const pat = pats.length === 1 && !patNodes.some(k => isTok(k, ','))
+            ? pats[0] : { type: 'SequencePattern', elements: pats, loc: pm.loc(patNodes[0].from), end: pm.end(patNodes[patNodes.length - 1].to) };
+          const body = block(bodyNode);
+          return mk('MatchCase', cl.from, body.range[1], {
+            pattern: pat,
+            guard: guardNode ? expr(kids(guardNode).find(k => !isTok(k, 'if'))) : null,
+            head: { loc: pm.loc(cl.from), end: pm.end((guardNode ?? patNodes[patNodes.length - 1]).to) },
+            body,
+          });
+        });
+        return [mk('MatchStatement', n.from, cases.length ? cases[cases.length - 1].range[1] : n.to, { subject, cases })];
+      }
       default:                  return unsupported(`文「${n.name}」`, n);
+    }
+  }
+
+  /** デコレーター（@名前・@a.b・@名前(引数)）→ 式 */
+  function decorator(d) {
+    const dk = kids(d).filter(k => k.name !== 'At');
+    let e = null;
+    for (let i = 0; i < dk.length; i++) {
+      const k = dk[i];
+      if (k.name === 'VariableName' && !e) e = mk('Identifier', k.from, k.to, { name: text(k) });
+      else if (isTok(k, '.')) {
+        const p = dk[++i];
+        e = mk('MemberExpression', dk[0].from, p.to, { object: e, computed: false, optional: false, property: mk('Identifier', p.from, p.to, { name: text(p) }) });
+      } else if (k.name === 'ArgList') e = mk('CallExpression', dk[0].from, k.to, { callee: e, arguments: callArgs(k), optional: false });
+      else unsupported(`デコレーター「${text(d).trim()}」`, d);
+    }
+    return e;
+  }
+
+  /** match のパターン（ADR-012） */
+  function pattern(p) {
+    const pk = kids(p).filter(k => !isTok(k, '(', ')', '[', ']', '{', '}', ',', ':') && !k.type.isError);
+    const at = { loc: pm.loc(p.from), end: pm.end(p.to) };
+    const nonEmpty = (ns) => ns.filter(k => !(k.name === 'LiteralPattern' && kids(k).every(x => x.type.isError)));
+    switch (p.name) {
+      case 'LiteralPattern': {
+        const neg = pk.length === 2 && isTok(pk[0], '-');
+        const v = expr(pk[pk.length - 1]);
+        return { type: 'LiteralPattern', value: neg ? mk('UnaryExpression', p.from, p.to, { operator: '-', prefix: true, argument: v }) : v, ...at };
+      }
+      case 'CapturePattern': {
+        const name = text(pk[0]);
+        return name === '_' ? { type: 'WildcardPattern', ...at } : { type: 'CapturePattern', name, ...at };
+      }
+      case 'AttributePattern': {
+        let e = mk('Identifier', pk[0].from, pk[0].to, { name: text(pk[0]) });
+        for (let i = 1; i < pk.length; i++) {
+          if (isTok(pk[i], '.')) continue;
+          e = mk('MemberExpression', p.from, pk[i].to, { object: e, computed: false, optional: false, property: mk('Identifier', pk[i].from, pk[i].to, { name: text(pk[i]) }) });
+        }
+        return { type: 'ValuePattern', value: e, ...at };
+      }
+      case 'OrPattern':
+        return { type: 'OrPattern', patterns: pk.filter(k => k.name !== 'LogicOp').map(pattern), ...at };
+      case 'AsPattern':
+        return { type: 'AsPattern', pattern: pattern(pk[0]), name: text(pk[pk.length - 1]), ...at };
+      case 'StarPattern': {
+        const name = text(pk[pk.length - 1]);
+        return { type: 'StarPattern', name: name === '_' ? null : name, ...at };
+      }
+      case 'SequencePattern': {
+        const items = nonEmpty(pk);
+        // 「(x)」はかっこでまとめただけ（並びではない）
+        if (text(p).startsWith('(') && items.length === 1 && !kids(p).some(k => isTok(k, ','))) return pattern(items[0]);
+        return { type: 'SequencePattern', elements: items.map(pattern), ...at };
+      }
+      case 'MappingPattern': {
+        const keys = [], values = [];
+        let rest = null;
+        for (let i = 0; i < pk.length; i++) {
+          if (isTok(pk[i], '**')) { rest = text(pk[++i]); continue; }
+          keys.push(pattern(pk[i])); values.push(pattern(pk[++i]));
+        }
+        return { type: 'MappingPattern', keys, values, rest, ...at };
+      }
+      case 'ClassPattern': {
+        const argList = pk.find(k => k.name === 'PatternArgList');
+        let cls = null;
+        for (const k of pk) {
+          if (k === argList) break;
+          if (k.name === 'VariableName' && !cls) cls = mk('Identifier', k.from, k.to, { name: text(k) });
+          else if (k.name === 'PropertyName') cls = mk('MemberExpression', p.from, k.to, { object: cls, computed: false, optional: false, property: mk('Identifier', k.from, k.to, { name: text(k) }) });
+        }
+        const args = [], keywords = [];
+        for (const a of nonEmpty(kids(argList).filter(k => !isTok(k, '(', ')', ',') && !k.type.isError))) {
+          if (a.name === 'KeywordPattern') {
+            const ak = kids(a).filter(k => !isTok(k, '='));
+            keywords.push({ name: text(ak[0]), pattern: pattern(ak[1]) });
+          } else args.push(pattern(a));
+        }
+        return { type: 'ClassPattern', cls, args, keywords, ...at };
+      }
+      default:
+        return unsupported(`パターン「${text(p)}」`, p);
     }
   }
 
@@ -564,6 +689,27 @@ export function parse(src) {
     return mk('TemplateLiteral', n.from, n.to, { quasis, expressions, formatSpecs: specs, conversions });
   }
 
+  /** 呼び出しの引数の並び（ArgList）→ 引数のノードの配列 */
+  function callArgs(argList) {
+    const inner = kids(argList).filter(k => !isTok(k, '(', ')'));
+    const args = splitBy(inner, [',']).filter(g => g.length).map(g => {
+      if (g.length === 3 && g[1].name === 'AssignOp') {
+        return mk('KeywordArgument', g[0].from, g[2].to, { name: text(g[0]), value: expr(g[2]) });
+      }
+      if (isTok(g[0], '*', '**') && g.length === 2) {
+        return mk(isTok(g[0], '*') ? 'SpreadElement' : 'KeywordSpreadElement', g[0].from, g[1].to, { argument: expr(g[1]) });
+      }
+      if (g.some(k => isTok(k, 'for'))) {
+        // f(x for x in xs)：括弧のないジェネレーター式
+        const { head, generators } = comprehension(g);
+        return mk('GeneratorExpression', g[0].from, g[g.length - 1].to, { element: exprList(head), generators });
+      }
+      if (g.length !== 1) unsupported(`引数「${g.map(text).join('')}」`, g[0]);
+      return expr(g[0]);
+    });
+    return args;
+  }
+
   function isCompare(n) {
     if (n.name !== 'BinaryExpression') return false;
     const op = binOp(kids(n)).op;
@@ -659,26 +805,8 @@ export function parse(src) {
           consequent: expr(c[ifIdx - 1]), test: expr(c[ifIdx + 1]), alternate: expr(c[elseIdx + 1]),
         });
       }
-      case 'CallExpression': {
-        const argList = c[c.length - 1];
-        const inner = kids(argList).filter(k => !isTok(k, '(', ')'));
-        const args = splitBy(inner, [',']).filter(g => g.length).map(g => {
-          if (g.length === 3 && g[1].name === 'AssignOp') {
-            return mk('KeywordArgument', g[0].from, g[2].to, { name: text(g[0]), value: expr(g[2]) });
-          }
-          if (isTok(g[0], '*', '**') && g.length === 2) {
-            return mk(isTok(g[0], '*') ? 'SpreadElement' : 'KeywordSpreadElement', g[0].from, g[1].to, { argument: expr(g[1]) });
-          }
-          if (g.some(k => isTok(k, 'for'))) {
-            // f(x for x in xs)：括弧のないジェネレーター式
-            const { head, generators } = comprehension(g);
-            return mk('GeneratorExpression', g[0].from, g[g.length - 1].to, { element: exprList(head), generators });
-          }
-          if (g.length !== 1) unsupported(`引数「${g.map(text).join('')}」`, g[0]);
-          return expr(g[0]);
-        });
-        return mk('CallExpression', n.from, n.to, { callee: expr(c[0]), arguments: args, optional: false });
-      }
+      case 'CallExpression':
+        return mk('CallExpression', n.from, n.to, { callee: expr(c[0]), arguments: callArgs(c[c.length - 1]), optional: false });
       case 'MemberExpression': {
         const object = expr(c[0]);
         if (isTok(c[1], '.')) {

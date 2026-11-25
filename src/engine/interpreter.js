@@ -9,10 +9,10 @@ import {
   Recorder, Scope, createCloner, ReturnSignal, BreakSignal, ContinueSignal, ThrowSignal,
 } from 'js-interpreter/core';
 import {
-  PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet, dictGet, dictDelete, dictEntries, intOp, normInt, big,
+  PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet, dictGet, dictDelete, dictEntries, dictHas, intOp, normInt, big,
   makeSet, setAdd, setHas, isSet, isSeq, NOT_IMPLEMENTED,
   isFloat, isInt, isBool, isNum, isStr, isTuple, isList, isDict, num, typeName,
-  truthy, repr, str, pyEq, pyCmp, richCompare, iterate, contains, pyCloneHook,
+  truthy, repr, str, pyEq, pyCmp, richCompare, iterate, contains, pyCloneHook, PyTraceback,
 } from './values.js';
 import { BUILTINS, getAttr, setAttr, delAttr, formatValue, percentFormat } from './builtins.js';
 import {
@@ -76,6 +76,8 @@ function analyzeScope(fnNode) {
         return;
       case 'ForOfStatement': addTarget(n.left); walk(n.right); walk(n.body); walk(n.orelse); return;
       case 'NamedExpression': locals.add(n.target.name); walk(n.value); return;
+      case 'WithStatement': for (const it of n.items) { walk(it.context); addTarget(it.target); } walk(n.body); return;
+      case 'MatchCase': patternNames(n.pattern).forEach(x => locals.add(x)); walk(n.guard); walk(n.body); return;
       case 'EmptyStatement': if (n.annotated) locals.add(n.annotated); return;   // 関数の中の「x: int」（ADR-011）
       case 'DeleteStatement': n.targets.forEach(t => (t.type === 'Identifier' ? locals.add(t.name) : walk(t))); return;
       case 'ExceptHandler': if (n.name) locals.add(n.name); walk(n.exType); walk(n.body); return;
@@ -478,6 +480,132 @@ function exceptMatches(t, exc, loc) {
   return exc.cls.mro.includes(t);
 }
 
+// ── with・match（ADR-012） ─────────────────────────────────────────────────────
+
+/** with の items[i] 以降を実行する（複数の項目は入れ子の with と同じ） */
+function runWith(node, i, env, rt, d, callDepth) {
+  if (i === node.items.length) return evaluate(node.body, env, rt, d, callDepth);
+  const item = node.items[i];
+  const mgr = evaluate(item.context, env, rt, d, callDepth);
+  if (!isInstance(mgr) || classLookup(mgr.cls, '__enter__') === undefined || classLookup(mgr.cls, '__exit__') === undefined) {
+    throw new PyError('TypeError', `${typeName(mgr)} は with で使えません（__enter__ と __exit__ がありません）`, item.loc);
+  }
+  const value = callSpecial(mgr, '__enter__');
+  if (item.target) {
+    // as の代入を WithBinding として記録する（「人」のステップが止まる）
+    const binding = { type: 'WithBinding', loc: item.loc, end: item.end };
+    const bind = () => { assignTarget(item.target, value, env, rt, d, callDepth); return value; };
+    if (rt.recorder) rt.recorder.record(binding, env, d, callDepth, bind); else bind();
+  }
+  let r;
+  try {
+    r = runWith(node, i + 1, env, rt, d, callDepth);
+  } catch (err) {
+    const exc = toPyException(err);
+    if (!exc) throw err;
+    // __exit__ が真を返したら、例外をここで止める
+    if (truthy(callSpecial(mgr, '__exit__', [exc.cls, exc, new PyTraceback()]))) return undefined;
+    throw err;
+  }
+  callSpecial(mgr, '__exit__', [null, null, null]);
+  return r;
+}
+
+/** パターンが取り込む名前 */
+function patternNames(p) {
+  switch (p?.type) {
+    case 'CapturePattern': return [p.name];
+    case 'StarPattern': return p.name ? [p.name] : [];
+    case 'AsPattern': return [...patternNames(p.pattern), p.name];
+    case 'OrPattern': return p.patterns.flatMap(patternNames);
+    case 'SequencePattern': return p.elements.flatMap(patternNames);
+    case 'MappingPattern': return [...p.values.flatMap(patternNames), ...(p.rest ? [p.rest] : [])];
+    case 'ClassPattern': return [...p.args.flatMap(patternNames), ...p.keywords.flatMap(k => patternNames(k.pattern))];
+    default: return [];
+  }
+}
+
+/** 組み込みの型で、クラスのパターンの位置引数 1 つが値そのものに当てはまるもの（str(x)・int(n) など） */
+const SELF_MATCH_TYPES = new Set(['bool', 'int', 'float', 'str', 'list', 'tuple', 'dict', 'set']);
+
+/** subject がパターン p に当てはまるか。当てはまれば、取り込んだ名前と値を binds に入れる */
+function matchPattern(p, v, binds, env, rt, d, callDepth) {
+  const ev = (n) => evaluate(n, env, rt, d, callDepth);
+  switch (p.type) {
+    case 'WildcardPattern': return true;
+    case 'CapturePattern': binds.set(p.name, v); return true;
+    case 'LiteralPattern': {
+      const lit = ev(p.value);
+      // None・True・False は is で比べる（1 は case True: に当てはまらない）
+      return lit === null || typeof lit === 'boolean' ? v === lit : pyEq(v, lit);
+    }
+    case 'ValuePattern': return pyEq(v, ev(p.value));
+    case 'AsPattern': {
+      if (!matchPattern(p.pattern, v, binds, env, rt, d, callDepth)) return false;
+      binds.set(p.name, v);
+      return true;
+    }
+    case 'OrPattern':
+      for (const alt of p.patterns) {
+        const b = new Map(binds);
+        if (matchPattern(alt, v, b, env, rt, d, callDepth)) { for (const [k, x] of b) binds.set(k, x); return true; }
+      }
+      return false;
+    case 'SequencePattern': {
+      // 文字列・辞書・集合は並びのパターンに当てはまらない（CPython と同じ）
+      if (!(isList(v) || isTuple(v) || v instanceof PyRange)) return false;
+      const items = [...iterate(v, p.loc)];
+      const star = p.elements.findIndex(e => e.type === 'StarPattern');
+      if (star < 0 ? items.length !== p.elements.length : items.length < p.elements.length - 1) return false;
+      const after = p.elements.length - star - 1;
+      return p.elements.every((e, i) => {
+        if (e.type === 'StarPattern') { if (e.name) binds.set(e.name, items.slice(star, items.length - after)); return true; }
+        const x = star < 0 || i < star ? items[i] : items[items.length - (p.elements.length - i)];
+        return matchPattern(e, x, binds, env, rt, d, callDepth);
+      });
+    }
+    case 'MappingPattern': {
+      if (!isDict(v)) return false;
+      const used = [];
+      for (let i = 0; i < p.keys.length; i++) {
+        const k = ev(p.keys[i].value);
+        if (!dictHas(v, k, p.loc)) return false;
+        used.push(k);
+        if (!matchPattern(p.values[i], dictGet(v, k, p.loc), binds, env, rt, d, callDepth)) return false;
+      }
+      if (p.rest) binds.set(p.rest, makeDict(dictEntries(v).filter(([k]) => !used.some(u => pyEq(u, k)))));
+      return true;
+    }
+    case 'ClassPattern': {
+      const cls = ev(p.cls);
+      if (!truthy(BUILTINS.isinstance([v, cls], {}, { loc: p.loc }))) return false;
+      if (p.args.length) {
+        if (typeof cls === 'function' && SELF_MATCH_TYPES.has(cls.pyName)) {
+          if (p.args.length > 1) throw new PyError('TypeError', `${cls.pyName}() のパターンの位置引数は 1 つまでです`, p.loc);
+          if (!matchPattern(p.args[0], v, binds, env, rt, d, callDepth)) return false;
+        } else {
+          const names = isClass(cls) ? classLookup(cls, '__match_args__') : undefined;
+          if (!isTuple(names) || names.length < p.args.length) {
+            throw new PyError('TypeError', `${isClass(cls) ? cls.name : typeName(cls)}() のパターンに位置引数を使うには __match_args__ が必要です`, p.loc);
+          }
+          for (let i = 0; i < p.args.length; i++) {
+            if (!matchAttr(v, names[i], p.args[i], binds, env, rt, d, callDepth)) return false;
+          }
+        }
+      }
+      return p.keywords.every(k => matchAttr(v, k.name, k.pattern, binds, env, rt, d, callDepth));
+    }
+  }
+  throw new PyError('NotImplemented', `${p.type} はまだ評価できません`, p.loc);
+}
+
+/** クラスのパターンの属性 name が pattern に当てはまるか（属性がなければ当てはまらない） */
+function matchAttr(v, name, pattern, binds, env, rt, d, callDepth) {
+  let x;
+  try { x = getAttr(v, name, pattern.loc); } catch (err) { if (err instanceof PyError && err.pyType === 'AttributeError') return false; throw err; }
+  return matchPattern(pattern, x, binds, env, rt, d, callDepth);
+}
+
 /** 並びの要素を評価する。*xs は中身を展開する（[*a, 1]。ADR-011） */
 function spreadElements(elements, ev) {
   const out = [];
@@ -666,13 +794,49 @@ function _eval(node, env, rt, depth, callDepth) {
       const r = ev(node.body, cenv);
       if (isSignal(r)) return r;
       const cls = new PyClass(node.id.name, bases.length ? bases : [ObjectClass], Object.fromEntries(cenv.bindings));
-      for (const v of cenv.bindings.values()) {
-        if (v && v.__type__ === 'JSFunction' && v.classEnv === cenv) {
-          v.ownerClass = cls;
-          v.qualName = `${cls.name}.${v.name}`;   // メッセージでは CPython と同じくクラス名を付ける（A.__init__()。ADR-010）
+      for (const b of cenv.bindings.values()) {
+        // staticmethod・classmethod・property で包んだ関数も、どのクラスのメソッドかを知らせる（super() のため。ADR-012）
+        for (const v of [b, b?.fn, b?.fget, b?.fset]) {
+          if (v && v.__type__ === 'JSFunction' && v.classEnv === cenv) {
+            v.ownerClass = cls;
+            v.qualName = `${cls.name}.${v.name}`;   // メッセージでは CPython と同じくクラス名を付ける（A.__init__()。ADR-010）
+          }
         }
       }
       assignName(node.id.name, cls, env, node.loc);
+      return undefined;
+    }
+
+    case 'DecoratedStatement': {   // @dec：デコレーターの式を先に評価し、定義のあと下から順に適用する（ADR-012）
+      const decs = node.decorators.map(x => ev(x));
+      const r = ev(node.definition);
+      if (isSignal(r)) return r;
+      const name = node.definition.id.name;
+      let v = lookup(name, env, node.loc);
+      for (let i = decs.length - 1; i >= 0; i--) v = callFunction(decs[i], [v], {}, rt, d, callDepth, node.decorators[i].loc, env);
+      assignName(name, v, env, node.loc);
+      return undefined;
+    }
+
+    case 'WithStatement':   // with 式 as 名前:（ADR-012）
+      return runWith(node, 0, env, rt, d, callDepth);
+
+    case 'MatchStatement': {   // match 式: case パターン:（ADR-012）
+      const subject = ev(node.subject);
+      for (const c of node.cases) {
+        const binds = new Map();
+        // case を試すたびに CaseTest として記録する（値は当てはまったか。制御フローのビューの「×N」が試した回数になる）
+        const test = () => matchPattern(c.pattern, subject, binds, env, rt, d, callDepth);
+        const matched = rt.recorder ? rt.recorder.record({ type: 'CaseTest', loc: c.head.loc, end: c.head.end }, env, d, callDepth, test) : test();
+        if (!matched) continue;
+        // 当てはまった case を CaseBinding として記録する（「人」のステップが止まる。取り込んだ名前に代入する）
+        const binding = { type: 'CaseBinding', loc: c.head.loc, end: c.head.end };
+        const bind = () => { for (const [k, v] of binds) assignName(k, v, env, c.loc); return subject; };
+        if (rt.recorder) rt.recorder.record(binding, env, d, callDepth, bind); else bind();
+        if (c.guard && !truthy(ev(c.guard))) continue;
+        const r = ev(c.body);
+        return isSignal(r) ? r : undefined;
+      }
       return undefined;
     }
 

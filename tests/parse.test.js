@@ -16,7 +16,7 @@ const ERRORS = [
   ['JS 風の波括弧', 'if (x > 1) {\n    print(x)\n}\n', 1, '{ } ではなく'],
   ['if のない else', 'else:\n    pass\n', 1, '対応する if がない else'],
   ['タブと空白の混在', 'if x:\n\ty = 1\n        z = 2\n', 3, 'タブと空白が混ざっています'],
-  ['未対応の構文', 'with open("f") as f:\n    pass\n', 1, 'with 文 はまだ対応していません'],
+  ['未対応の構文', 'async def f():\n    pass\n', 1, 'async def はまだ対応していません'],
 ];
 
 for (const [name, src, line, msg] of ERRORS) {

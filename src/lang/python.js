@@ -52,6 +52,8 @@ export const pythonValueModel = {
     if (isClass(v)) return 'class';
     if (isInstance(v)) return 'object';
     if (v.__type__ === 'JSFunction') return 'function';
+    // staticmethod・classmethod・property は、ビューでは関数として見せる（名前は中の関数の名前。ADR-012）
+    if (v.__type__ === 'PyStaticMethod' || v.__type__ === 'PyClassMethod' || v.__type__ === 'PyProperty') return 'function';
     if (isDict(v)) return 'mapping';
     if (Array.isArray(v)) return 'sequence';
     return 'object';
@@ -125,7 +127,7 @@ export const createPythonProfile = (samples, { groups, defaultSample } = {}) => 
   // for の各回（LoopBinding）でも行を作る。Python には宣言・++・C 形式の for はない
   traceRowTypes: {
     enter: ['ExpressionStatement', 'IfStatement', 'BreakStatement', 'ContinueStatement', 'RaiseStatement', 'AssertStatement'],
-    exit:  ['AssignmentExpression', 'ReturnStatement', 'CallExpression', 'LoopBinding', 'ExceptBinding'],
+    exit:  ['AssignmentExpression', 'ReturnStatement', 'CallExpression', 'LoopBinding', 'ExceptBinding', 'CaseBinding', 'WithBinding'],
   },
   valueModel: pythonValueModel,
   syntaxTokens: [

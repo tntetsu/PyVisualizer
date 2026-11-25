@@ -34,6 +34,7 @@ const STATEMENTS = new Set([
   'ExpressionStatement', 'IfStatement', 'WhileStatement', 'ForOfStatement', 'ReturnStatement',
   'FunctionDeclaration', 'BreakStatement', 'ContinueStatement', 'EmptyStatement', 'DeleteStatement',
   'TryStatement', 'RaiseStatement', 'AssertStatement', 'ClassDeclaration',
+  'WithStatement', 'DecoratedStatement', 'MatchStatement', 'ImportStatement', 'ImportFromStatement',
 ]);
 
 const isFunctionValue = (v) => v && (v.__type__ === 'JSFunction' || typeof v === 'function' || isClass(v) || v.constructor?.name === 'PyModule');

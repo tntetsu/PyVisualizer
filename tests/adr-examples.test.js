@@ -309,3 +309,72 @@ test('ADR-011 例5：map に渡した関数は、map を呼んだときに全部
 test('ADR-011 例6：大きな小数・小さな小数は CPython と同じく指数表記になり、書式の丸めも CPython と同じ', () => {
   assert.deepEqual(output('print(1e20, 0.00001, 2.0 ** 70)\nprint(f"{2.675:.2f} {2.5:.0f}")\n'), ['1e+20 1e-05 1.1805916207174113e+21', '2.67 2']);
 });
+
+// ── ADR-012：デコレーター・with・match ─────────────
+
+test('ADR-012 例1：自作のデコレーターと、property・staticmethod・classmethod が使える', () => {
+  const src = [
+    'def loud(f):', '    def w(*a):', '        return f(*a).upper()', '    return w',
+    '@loud', 'def greet(name):', '    return "hi " + name',
+    'class C:', '    def __init__(self):', '        self._v = 1',
+    '    @property', '    def v(self):', '        return self._v',
+    '    @v.setter', '    def v(self, x):', '        self._v = x * 10',
+    '    @staticmethod', '    def s():', '        return "s"',
+    '    @classmethod', '    def k(cls):', '        return cls.__name__',
+    'c = C()', 'c.v = 2', 'print(greet("ann"), c.v, C.s(), C.k())', '',
+  ].join('\n');
+  assert.deepEqual(output(src), ['HI ANN 20 s C']);
+});
+
+test('ADR-012 例2：with は __enter__ と __exit__ を呼び、__exit__ が True を返すと例外を止める', () => {
+  const src = [
+    'class Box:', '    def __enter__(self):', '        print("open")', '        return self',
+    '    def __exit__(self, et, ev, tb):', '        print("close", et.__name__ if et else None)', '        return True',
+    'with Box() as b:', '    print("inside")', '    1 / 0', 'print("after")', '',
+  ].join('\n');
+  assert.deepEqual(output(src), ['open', 'inside', 'close ZeroDivisionError', 'after']);
+});
+
+test('ADR-012 例3：match のいろいろなパターンが使える', () => {
+  const src = [
+    'def f(x):', '    match x:',
+    '        case 0 | 1:', '            return "small"',
+    '        case [a, *rest]:', '            return f"list {a} {rest}"',
+    '        case {"name": n}:', '            return "name " + n',
+    '        case str() as s if len(s) > 3:', '            return "long " + s',
+    '        case _:', '            return "other"',
+    'print(f(1), f([5, 6, 7]), f({"name": "ann"}), f("hello"), f("hi"))', '',
+  ].join('\n');
+  assert.deepEqual(output(src), ['small list 5 [6, 7] name ann long hello other']);
+});
+
+test('ADR-012 例4：「人」のステップは、当てはまった case と with … as の代入で止まる', () => {
+  const src = [
+    'class Box:', '    def __enter__(self):', '        return 7', '    def __exit__(self, *a):', '        return False',
+    'with Box() as b:', '    pass',
+    'match [1, 2]:', '    case [x]:', '        pass', '    case [x, y]:', '        pass', '',
+  ].join('\n');
+  const dbg = new PyDebugger(src);
+  const stops = [];
+  while (!dbg.humanStep().done) {
+    const ev = dbg.getCurrentEvent();
+    if (ev.nodeType === 'WithBinding' || ev.nodeType === 'CaseBinding') stops.push(`${ev.loc.line}:${ev.nodeType}`);
+  }
+  assert.deepEqual(stops, ['6:WithBinding', '11:CaseBinding']);
+});
+
+test('ADR-012 例5：制御フローのビューは、match の case を if … else の連なりとして描く', () => {
+  const src = 'x = 2\nmatch x:\n    case 1:\n        print("one")\n    case 2:\n        print("two")\n';
+  const dbg = new PyDebugger(src);
+  const [global] = new TraceBuilder(dbg.trace, src, dbg.ast).buildCFG();
+  const match = global.items.find(it => it.type === 'seq' && it.children[0].label === 'match x:');
+  assert.ok(match, 'match の見出しがある');
+  const chain = match.children[1];
+  assert.deepEqual([chain.condLabel, chain.execCount, chain.else_[0].condLabel, chain.else_[0].execCount], ['case 1:', 1, 'case 2:', 1]);
+  assert.deepEqual(chain.else_[0].then_.map(i => [i.label, i.execCount]), [['print("two")', 1]]);
+});
+
+test('ADR-012 例6：open() はまだ使えず、データをプログラムの中に書くよう案内する', () => {
+  assert.throws(() => new PyDebugger('with open("data.txt") as f:\n    print(f.read())\n'),
+    (e) => { assert.match(e.message, /open\(\) によるファイルの読み書きはまだ対応していません/); return true; });
+});

@@ -55,6 +55,11 @@ export class PyIterator {
   toString() { return `<${this.kind} object>`; }
 }
 
+/** with の __exit__ に渡すトレースバック（中身は持たない。表示は CPython と同じ <traceback object>。ADR-012） */
+export class PyTraceback {
+  toString() { return '<traceback object>'; }
+}
+
 export function floatRepr(v) {
   if (Number.isNaN(v)) return 'nan';
   if (v === Infinity) return 'inf';
@@ -305,6 +310,10 @@ export function typeName(v) {
   if (isDict(v)) return 'dict';
   if (v instanceof PyRange) return 'range';
   if (v instanceof PyIterator) return v.kind;
+  if (v instanceof PyTraceback) return 'traceback';
+  if (v?.__type__ === 'PyProperty') return 'property';
+  if (v?.__type__ === 'PyStaticMethod') return 'staticmethod';
+  if (v?.__type__ === 'PyClassMethod') return 'classmethod';
   if (isInstance(v)) return v.cls.name;
   if (isClass(v)) return 'type';
   if (v && v.constructor?.name === 'PyModule') return 'module';
@@ -342,7 +351,7 @@ export function repr(v, seen = new Set()) {
   if (isInt(v)) return String(v);
   if (isFloat(v)) return v.toString();
   if (isStr(v)) return strRepr(v);
-  if (v instanceof PyRange || v instanceof PyIterator) return v.toString();
+  if (v instanceof PyRange || v instanceof PyIterator || v instanceof PyTraceback) return v.toString();
   if (typeof v === 'function') return v.isType ? `<class '${v.pyName}'>` : `<built-in function ${v.pyName ?? v.name}>`;
   if (isClass(v)) return v.builtin ? `<class '${v.name}'>` : `<class '__main__.${v.name}'>`;
   if (isInstance(v)) {
@@ -352,6 +361,10 @@ export function repr(v, seen = new Set()) {
     return `<__main__.${v.cls.name} object>`;
   }
   if (v.__type__ === 'JSFunction') return v.isLambda ? '<function <lambda>>' : `<function ${v.name}>`;
+  if (v.__type__ === 'PyProperty') return '<property object>';
+  if (v.__type__ === 'PyStaticMethod' || v.__type__ === 'PyClassMethod') {
+    return `<${v.__type__ === 'PyStaticMethod' ? 'staticmethod' : 'classmethod'}(${repr(v.fn, seen)})>`;
+  }
   if (seen.has(v)) return isDict(v) ? '{...}' : '[...]';
   seen.add(v);
   try {

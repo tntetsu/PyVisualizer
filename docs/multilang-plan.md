@@ -100,6 +100,8 @@ JSInterpreter・JSVisualizer の作業ブランチを main にマージすると
 
 ### 4.2 JavaVisualizer
 
+> 計画書：[../JavaVisualizer/docs/development-plan.md](../../JavaVisualizer/docs/development-plan.md)（2026-11-25 作成。以後はこちらを更新する）
+
 **目的**：入門の Java（`public static void main`・基本の型・配列・`String`・クラス・`ArrayList`・`HashMap`・例外・`Scanner`）を可視化する。
 
 - **パーサー**：`@lezer/java`（1.2.0）、エディタは `@codemirror/lang-java`。新しい構文（`record`・`switch` 式・`var`・テキストブロック）にどこまで対応しているかを Phase 0 で確かめる

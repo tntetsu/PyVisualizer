@@ -15,12 +15,12 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+# ビルドとデプロイを別のジョブにする（GitHub の Pages 用の標準のワークフローと同じ形）。
+# 1 つのジョブで続けて行うと、アップロードした直後の成果物が deploy-pages から見えず、
+# 「No artifacts named "github-pages"」で失敗することがあった（2026-11-25 に 2 回）。
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout PyVisualizer
@@ -66,6 +66,14 @@ jobs:
         with:
           path: web/
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

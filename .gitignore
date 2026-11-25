@@ -6,3 +6,6 @@ web/*.bundle.js
 
 # スパイクのビルド出力（scripts/build-spike.mjs が JSVisualizer からコピー・生成する）
 web/
+
+# 作業用の一時ファイル
+*.tmp.mjs

@@ -18,7 +18,7 @@
    print(name, age + 1)
    ```
 2. 入力の欄の行が足りないと `EOFError` になり、「入力が足りません（画面の「入力」の欄に、input() で読む行を書いてください）」と表示される
-3. `import math`・`from math import sqrt` は使える。`import random` などのほかのモジュールは `ModuleNotFoundError` になり、「PyVisualizer で import できるのは math だけです」と表示される
+3. `import math`・`from math import sqrt` は使える。`import random` などのほかのモジュールは `ModuleNotFoundError` になり、「PyVisualizer で import できるのは math だけです」と表示される（[ADR-013](ADR-013-more-modules.md) で random などを使えるようにし、メッセージは使えるモジュールの一覧になった。テストは `import numpy` で確かめる）
 
 ## 決定
 

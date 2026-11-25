@@ -20,6 +20,7 @@ import {
   classLookup, PyRaise, toPyException, setInvoker, EXCEPTIONS, callSpecial,
 } from './objects.js';
 import { importModule } from './modules.js';
+import { missingItem, isCounter, counterBinop } from './lib/collections.js';
 
 const MAX_RECURSION = 1000;
 
@@ -151,6 +152,7 @@ export function binop(op, a, b, loc) {
     const rr = callSpecial(b, `__r${OP_METHODS[op]}__`, [a]);
     if (rr !== undefined && rr !== NOT_IMPLEMENTED) return rr;
   }
+  if ((op === '+' || op === '-') && isCounter(a) && isCounter(b)) return counterBinop(op, a, b, loc);   // ADR-013
   const nums = isNum(a) && isNum(b);
   const ints = bothInt(a, b);
   switch (op) {
@@ -264,7 +266,11 @@ function normIndex(seq, key, loc, assign = false) {
 }
 
 export function getItem(obj, key, loc) {
-  if (isDict(obj)) return dictGet(obj, key, loc);
+  if (isDict(obj)) {
+    // Counter はない要素を 0、defaultdict は factory() の値を入れて返す（ADR-013）
+    if (obj.subtype && !dictHas(obj, key, loc)) { const v = missingItem(obj, key, loc); if (v !== undefined) return v; }
+    return dictGet(obj, key, loc);
+  }
   if (obj instanceof PyRange) return obj.at(normIndex(obj, key, loc));
   if (isStr(obj) || isSeq(obj)) return obj[normIndex(obj, key, loc)];
   throw new PyError('TypeError', `${typeName(obj)} には [ ] で添字を付けられません`, loc);
@@ -898,10 +904,10 @@ function _eval(node, env, rt, depth, callDepth) {
     }
 
     case 'ImportStatement':
-      for (const { name, alias } of node.names) assignName(alias ?? name, importModule(name, node.loc), env, node.loc);
+      for (const { name, alias } of node.names) assignName(alias ?? name, importModule(name, node.loc, rt), env, node.loc);
       return undefined;
     case 'ImportFromStatement': {
-      const m = importModule(node.module, node.loc);
+      const m = importModule(node.module, node.loc, rt);
       if (node.star) {
         for (const [k, v] of Object.entries(m.attrs)) assignName(k, v, env, node.loc);
         return undefined;
@@ -1039,6 +1045,11 @@ function _eval(node, env, rt, depth, callDepth) {
     }
     case 'UnaryExpression': {
       const v = ev(node.argument);
+      // インスタンスの -x・+x は __neg__・__pos__ を呼ぶ（timedelta など。ADR-013）
+      if (isInstance(v) && (node.operator === '-' || node.operator === '+')) {
+        const r = callSpecial(v, node.operator === '-' ? '__neg__' : '__pos__');
+        if (r !== undefined && r !== NOT_IMPLEMENTED) return r;
+      }
       switch (node.operator) {
         case 'not': return !truthy(v);
         case '-': if (isNum(v)) return isFloat(v) ? makeFloat(-v.v) : intOp('-', 0, v); break;

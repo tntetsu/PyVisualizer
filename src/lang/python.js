@@ -10,6 +10,7 @@ import {
 } from '../engine/values.js';
 import { isClass, isInstance, isException } from '../engine/objects.js';
 import { messageToEnglish } from '../engine/messages-en.js';
+import { isModule } from '../engine/modules.js';
 import { getLang } from 'js-visualizer/src/i18n.js';
 import { localizeErrorMessage } from 'js-visualizer/src/utils/error-message.js';
 
@@ -49,6 +50,7 @@ export const pythonValueModel = {
     }
     if (v instanceof PyFloat) return 'number';
     if (v instanceof PyRange) return 'other';
+    if (isModule(v)) return 'other';   // モジュールは中身を見せず <module 'math'> と書く（ADR-013）
     if (isClass(v)) return 'class';
     if (isInstance(v)) return 'object';
     if (v.__type__ === 'JSFunction') return 'function';
@@ -78,7 +80,8 @@ export const pythonValueModel = {
   },
   label(v) {
     if (isInstance(v)) return v.cls.name;
-    if (isDict(v)) return `dict[${v.keys.length}]`;
+    if (isDict(v)) return `${v.subtype ?? 'dict'}[${v.keys.length}]`;   // Counter・defaultdict（ADR-013）
+    if (v.__pydeque__) return `deque[${v.length}]`;
     if (isTuple(v)) return `tuple[${v.length}]`;
     if (isSet(v)) return `set[${v.length}]`;
     if (Array.isArray(v)) return `list[${v.length}]`;
@@ -86,14 +89,17 @@ export const pythonValueModel = {
   },
   shortLabel(v) {
     if (isInstance(v)) return v.cls.name;
-    if (isDict(v)) return 'dict';
+    if (isDict(v)) return v.subtype ?? 'dict';
+    if (v.__pydeque__) return 'deque';
     if (isTuple(v)) return 'tuple';
     if (isSet(v)) return 'set';
     if (Array.isArray(v)) return 'list';
     return 'object';
   },
   brackets(v) {
+    if (isDict(v) && v.subtype === 'Counter') return ['Counter({', '})'];   // ADR-013
     if (isDict(v)) return ['{', '}'];
+    if (Array.isArray(v) && v.__pydeque__) return ['deque([', '])'];
     if (isTuple(v)) return ['(', ')'];
     if (isSet(v)) return ['{', '}'];   // set は JS の配列で表す（sequence）。かっこだけ { }
     if (Array.isArray(v)) return ['[', ']'];
@@ -102,7 +108,7 @@ export const pythonValueModel = {
   },
   // Python の書き方：かっこの内側に空白を入れない（{'a': 1}）、空の集合は set()、1 要素の tuple は (1,)（ADR-009）
   padMapping: false,
-  emptyText: (v) => (isSet(v) ? 'set()' : null),
+  emptyText: (v) => (isSet(v) ? 'set()' : isDict(v) && v.subtype === 'Counter' ? 'Counter()' : null),
   trailingComma: (v, count) => isTuple(v) && count === 1,
 };
 

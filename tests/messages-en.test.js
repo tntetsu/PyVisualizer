@@ -33,11 +33,15 @@ const NOT_MESSAGES = new Set([
 function collect() {
   const messages = new Set();
   const unsupportedNames = new Set();
-  for (const f of readdirSync(ENGINE).filter(f => f.endsWith('.js') && f !== 'messages-en.js')) {
+  const files = [
+    ...readdirSync(ENGINE).filter(f => f.endsWith('.js') && f !== 'messages-en.js'),
+    ...readdirSync(join(ENGINE, 'lib')).filter(f => f.endsWith('.js')).map(f => join('lib', f)),   // モジュール（ADR-013）
+  ];
+  for (const f of files) {
     for (const line of readFileSync(join(ENGINE, f), 'utf8').split('\n')) {
       if (/^\s*(\/\/|\*)/.test(line)) continue;
       const code = line.replace(/\s\/\/ .*$/, '');   // 行末のコメントを除く
-      if (!/PyError\(|PySyntaxError\(|unsupported\(|return \[|^\s*[?:] `|^\s*`|super\(`/.test(code)) continue;
+      if (!/PyError\(|PySyntaxError\(|statError\(|unsupported\(|return \[|^\s*[?:] `|^\s*`|super\(`/.test(code)) continue;
       for (const [, lit] of code.matchAll(/(`(?:[^`$]|\$\{[^}]*\})*`|'[^']*'|"[^"]*")/g)) {
         const text = lit.slice(1, -1)
           .replace(/\$\{([^}]*)\}/g, (_, expr) => (expr === 'want' ? '1 個' : JAPANESE.test(expr) ? '' : '1'));

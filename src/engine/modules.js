@@ -1,9 +1,14 @@
 /**
- * modules.js — import できるモジュール（ADR-007）
+ * modules.js — import できるモジュール（ADR-007・ADR-013）
  *
- * いまは math だけ。random は実行ごとに結果が変わり、CPython と比べられないので入れていない。
- * モジュールは PyModule（名前と属性）。スナップショットでは参照を保持する（属性は変わらない）。
+ * math・random・time・datetime・collections・copy・statistics・string。
+ * モジュールは PyModule（名前と属性）。スナップショットでは参照を保持する。
+ * random（乱数の状態）・time（仮の時計）は実行ごとに状態を持つので、モジュールは実行ごとに作り、
+ * 同じ実行の中では同じものを返す（import を 2 回しても同じモジュール）。
  */
+import { makeRandomModule } from './lib/random.js';
+import { makeDatetimeModule, makeTimeModule } from './lib/datetime.js';
+import { makeCollectionsModule, makeCopyModule, makeStatisticsModule, makeStringModule } from './lib/collections.js';
 import {
   PyError, makeFloat, isInt, isBool, isNum, num, normInt, intOp, typeName, iterate,
 } from './values.js';
@@ -125,16 +130,31 @@ const MATH = {
   }),
 };
 
-const MODULES = { math: new PyModule('math', MATH) };
+/** モジュールの名前 → 属性を作る関数 */
+const FACTORIES = {
+  math: () => MATH,
+  random: makeRandomModule,
+  time: makeTimeModule,
+  datetime: makeDatetimeModule,
+  collections: makeCollectionsModule,
+  copy: makeCopyModule,
+  statistics: makeStatisticsModule,
+  string: makeStringModule,
+};
+export const AVAILABLE_MODULES = Object.keys(FACTORIES);
 
-/** モジュールを読み込む。ないものは ModuleNotFoundError（PyVisualizer は math だけ） */
-export function importModule(name, loc) {
-  const m = MODULES[name];
-  if (!m) {
+/**
+ * モジュールを読み込む。ないものは ModuleNotFoundError。
+ * @param {object} [rt] 実行の状態（rt.modules に、この実行で読み込んだモジュールを覚える）
+ */
+export function importModule(name, loc, rt = {}) {
+  if (!Object.prototype.hasOwnProperty.call(FACTORIES, name)) {
     throw new PyError('ModuleNotFoundError',
-      `モジュール '${name}' は使えません（PyVisualizer で import できるのは math だけです）`, loc);
+      `モジュール '${name}' は使えません（PyVisualizer で import できるのは ${AVAILABLE_MODULES.join('・')} です）`, loc);
   }
-  return m;
+  rt.modules ??= new Map();
+  if (!rt.modules.has(name)) rt.modules.set(name, new PyModule(name, FACTORIES[name]()));
+  return rt.modules.get(name);
 }
 
 export const isModule = (v) => v instanceof PyModule;

@@ -5,6 +5,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { joinConsoleLines } from 'js-interpreter/core';
 import { PyDebugger } from '../src/engine/py-debugger.js';
 
@@ -165,10 +166,10 @@ test('ADR-007 例2：入力欄の行が足りないと EOFError になり、入�
   assert.match(error, /^EOFError: 入力が足りません（画面の「入力」の欄に/);
 });
 
-test('ADR-007 例3：import できるのは math だけで、ほかのモジュールは ModuleNotFoundError になる', () => {
+test('ADR-007 例3：import math が使え、用意していないモジュールは ModuleNotFoundError になる（使えるモジュールは ADR-013 で増やした）', () => {
   assert.deepEqual(output('import math\nfrom math import sqrt\nprint(math.floor(2.5), sqrt(2) ** 2 > 1.99)\n'), ['2 True']);
-  assert.throws(() => new PyDebugger('import random\n'), (e) => {
-    assert.match(e.message, /^ModuleNotFoundError: モジュール 'random' は使えません（PyVisualizer で import できるのは math だけです）/);
+  assert.throws(() => new PyDebugger('import numpy\n'), (e) => {
+    assert.match(e.message, /^ModuleNotFoundError: モジュール 'numpy' は使えません（PyVisualizer で import できるのは math・random・time・datetime・collections・copy・statistics・string です）/);
     return true;
   });
 });
@@ -377,4 +378,48 @@ test('ADR-012 例5：制御フローのビューは、match の case を if … 
 test('ADR-012 例6：open() はまだ使えず、データをプログラムの中に書くよう案内する', () => {
   assert.throws(() => new PyDebugger('with open("data.txt") as f:\n    print(f.read())\n'),
     (e) => { assert.match(e.message, /open\(\) によるファイルの読み書きはまだ対応していません/); return true; });
+});
+
+// ── ADR-013：random・time・datetime・collections・copy・statistics・string ─────────────
+
+test('ADR-013 例1：random.seed(整数) を使うと、CPython と同じ乱数の列になる', () => {
+  const src = 'import random\nrandom.seed(2026)\nprint([random.randint(1, 6) for _ in range(5)], random.choice("ABC"))\n';
+  const expected = execFileSync('python3', ['-I', '-c', src], { encoding: 'utf8' }).trim();
+  assert.deepEqual(output(src), [expected]);
+});
+
+test('ADR-013 例2：time.sleep() は待たずに、time.time() の時計だけを進める', () => {
+  const src = 'import time\nstart = time.time()\ntime.sleep(2)\nprint(round(time.time() - start))\n';
+  const t0 = Date.now();
+  assert.deepEqual(output(src), ['2']);
+  assert.ok(Date.now() - t0 < 1500, '実際には待たない');
+});
+
+test('ADR-013 例3：date・timedelta が使え、変数のビューでは年・月・日が見える', () => {
+  const src = 'from datetime import date, timedelta\nd = date(2026, 11, 25)\nlater = d + timedelta(days=10)\nprint(later, (later - d).days, later.strftime("%a %b %d"))\n';
+  assert.deepEqual(output(src), ['2026-12-05 10 Sat Dec 05']);
+  assert.equal(shown(src, 'd'), 'date{year: 2026, month: 11, day: 25}');
+});
+
+test('ADR-013 例4：Counter・defaultdict・deque が使え、ビューでもそれと分かる', () => {
+  const src = [
+    'from collections import Counter, defaultdict, deque',
+    'c = Counter("banana")', 'g = defaultdict(list)', 'g["a"].append(1)', 'q = deque([1, 2])', 'q.appendleft(0)',
+    'print(c.most_common(1), c["z"], dict(g), q)', '',
+  ].join('\n');
+  assert.deepEqual(output(src), ["[('a', 3)] 0 {'a': [1]} deque([0, 1, 2])"]);
+  assert.deepEqual(['c', 'q'].map(n => shown(src, n)), ["Counter({'b': 1, 'a': 3, 'n': 2})", 'deque([0, 1, 2])']);
+});
+
+test('ADR-013 例5：copy.copy は中のリストを共有し、copy.deepcopy は中のリストもコピーする', () => {
+  const src = 'import copy\ngrid = [[0], [1]]\na = copy.copy(grid)\nb = copy.deepcopy(grid)\ngrid[0][0] = 9\nprint(a, b, a[0] is grid[0], b[0] is grid[0])\n';
+  assert.deepEqual(output(src), ['[[9], [1]] [[0], [1]] True False']);
+});
+
+test('ADR-013 例6：statistics・string が使え、import できないモジュールは使えるモジュールの一覧を案内する', () => {
+  assert.deepEqual(output('import statistics, string\nprint(statistics.mean([72, 88, 95]), statistics.median([3, 1, 2]), string.digits)\n'), ['85 2 0123456789']);
+  assert.throws(() => new PyDebugger('import numpy\n'), (e) => {
+    assert.match(e.message, /import できるのは math・random・time・datetime・collections・copy・statistics・string です/);
+    return true;
+  });
 });

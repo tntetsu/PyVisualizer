@@ -42,6 +42,8 @@ const isFunctionValue = (v) => v && (v.__type__ === 'JSFunction' || typeof v ===
 /** repr と同じだが、集合は要素の repr を並べ替えて出す（tools/trace_states.py の srepr と同じ規則） */
 function srepr(v) {
   if (isException(v)) return `<${v.cls.name}>`;   // エンジンが投げた例外のメッセージは日本語なので、型だけを比べる
+  if (isInstance(v) && v.cls.builtin) return repr(v);   // date・timedelta など（CPython 側も __dict__ がないので repr。ADR-013）
+  if (Array.isArray(v) && v.__pydeque__) return repr(v);   // deque（CPython 側は list ではないので repr）
   if (isInstance(v)) {   // ユーザーの __repr__ を呼ばずに属性から作る（tools/trace_states.py と同じ形）
     return `<${v.cls.name} {${Object.entries(v.attrs).map(([k, x]) => `${repr(k)}: ${srepr(x)}`).join(', ')}}>`;
   }

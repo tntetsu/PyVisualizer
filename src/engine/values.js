@@ -79,12 +79,13 @@ export const makeFloat = (v) => new PyFloat(v);
  */
 export function pyCloneHook(v, clone, seen) {
   if (!Array.isArray(v)) return undefined;
-  const marker = v.__pytuple__ === true ? '__pytuple__' : v.__pyset__ === true ? '__pyset__' : null;
+  const marker = v.__pytuple__ === true ? '__pytuple__' : v.__pyset__ === true ? '__pyset__' : v.__pydeque__ === true ? '__pydeque__' : null;
   if (!marker) return undefined;
   const c = [];
   seen.set(v, c);
   for (const x of v) c.push(clone(x));
   Object.defineProperty(c, marker, { value: true, enumerable: false });
+  if (marker === '__pydeque__') Object.defineProperty(c, 'maxlen', { value: v.maxlen, enumerable: false, writable: true });   // deque（ADR-013）
   return marker === '__pytuple__' ? Object.freeze(c) : c;
 }
 
@@ -204,6 +205,8 @@ export function hashKey(k, loc) {
   if (isStr(k)) return `s:${k}`;
   if (isTuple(k)) return `t:(${k.map(x => hashKey(x, loc)).join(',')})`;
   if (k instanceof PyRange) return `r:${k.start},${k.stop},${k.step}`;
+  // 組み込みのクラスで値として比べるもの（date・timedelta など）は、値からキーを作る（ADR-013）
+  if (isInstance(k) && k.cls.valueKey) return `v:${k.cls.name}:${k.cls.valueKey(k)}`;
   if (isFunc(k) || isInstance(k) || isClass(k)) {
     if (!funcIds.has(k)) funcIds.set(k, nextFuncId++);
     return `f:${funcIds.get(k)}`;
@@ -306,8 +309,9 @@ export function typeName(v) {
   if (isStr(v)) return 'str';
   if (isTuple(v)) return 'tuple';
   if (isSet(v)) return 'set';
+  if (Array.isArray(v) && v.__pydeque__ === true) return 'deque';
   if (isList(v)) return 'list';
-  if (isDict(v)) return 'dict';
+  if (isDict(v)) return v.subtype ?? 'dict';   // Counter・defaultdict（ADR-013）
   if (v instanceof PyRange) return 'range';
   if (v instanceof PyIterator) return v.kind;
   if (v instanceof PyTraceback) return 'traceback';
@@ -353,11 +357,12 @@ export function repr(v, seen = new Set()) {
   if (isStr(v)) return strRepr(v);
   if (v instanceof PyRange || v instanceof PyIterator || v instanceof PyTraceback) return v.toString();
   if (typeof v === 'function') return v.isType ? `<class '${v.pyName}'>` : `<built-in function ${v.pyName ?? v.name}>`;
-  if (isClass(v)) return v.builtin ? `<class '${v.name}'>` : `<class '__main__.${v.name}'>`;
+  if (isClass(v)) return v.builtin ? `<class '${v.moduleName ? `${v.moduleName}.` : ''}${v.name}'>` : `<class '__main__.${v.name}'>`;
   if (isInstance(v)) {
     const r = callSpecial(v, '__repr__');
     if (r !== undefined) return str(r);
     if (isException(v)) return `${v.cls.name}(${[...v.args].map(x => repr(x)).join(', ')})`;
+    if (v.cls.builtin && v.cls.moduleName) return `<${v.cls.moduleName}.${v.cls.name} object>`;
     return `<__main__.${v.cls.name} object>`;
   }
   if (v.__type__ === 'JSFunction') return v.isLambda ? '<function <lambda>>' : `<function ${v.name}>`;
@@ -370,7 +375,15 @@ export function repr(v, seen = new Set()) {
   try {
     if (isTuple(v)) return v.length === 1 ? `(${repr(v[0], seen)},)` : `(${v.map(x => repr(x, seen)).join(', ')})`;
     if (isSet(v)) return v.length === 0 ? 'set()' : `{${v.map(x => repr(x, seen)).join(', ')}}`;
+    if (v.__pydeque__ === true) return `deque([${v.map(x => repr(x, seen)).join(', ')}]${v.maxlen != null ? `, maxlen=${v.maxlen}` : ''})`;
     if (Array.isArray(v)) return `[${v.map(x => repr(x, seen)).join(', ')}]`;
+    if (isDict(v) && v.subtype === 'Counter') {   // 数の多い順に並べる（CPython と同じ。ADR-013）
+      const order = v.keys.map((k, i) => i).sort((a, b) => (num(v.values[b]) - num(v.values[a])) || a - b);
+      return v.keys.length ? `Counter({${order.map(i => `${repr(v.keys[i], seen)}: ${repr(v.values[i], seen)}`).join(', ')}})` : 'Counter()';
+    }
+    if (isDict(v) && v.subtype === 'defaultdict') {
+      return `defaultdict(${v.factory === null ? 'None' : repr(v.factory, seen)}, {${v.keys.map((k, i) => `${repr(k, seen)}: ${repr(v.values[i], seen)}`).join(', ')}})`;
+    }
     if (isDict(v)) return `{${v.keys.map((k, i) => `${repr(k, seen)}: ${repr(v.values[i], seen)}`).join(', ')}}`;
   } finally { seen.delete(v); }
   return String(v);

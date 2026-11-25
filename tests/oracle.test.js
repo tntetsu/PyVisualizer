@@ -16,7 +16,7 @@ import { messageToEnglish } from '../src/engine/messages-en.js';
 
 /** 英語のメッセージが CPython と違うことを意図したもの（PyVisualizer 固有の案内を足している） */
 const MESSAGE_DIFFERS = new Map([
-  ['error_import_unknown.py', 'import できるのは math だけであることを案内する'],
+  ['error_import_unknown.py', 'import できるモジュールの一覧を案内する'],
   ['error_input_eof.py', '画面の「入力」の欄に書くよう案内する'],
 ]);
 
@@ -36,7 +36,8 @@ function runCPython(file) {
     const args = stdin ? ['-I', join(ROOT, 'tests/tools/run_echo.py'), file] : ['-I', file];
     return { out: execFileSync('python3', args, { encoding: 'utf8', input: stdin, stdio: ['pipe', 'pipe', 'pipe'] }), errType: null, errLine: null };
   } catch (e) {
-    const last = e.stderr.trim().split('\n').pop();
+    // モジュールの例外（statistics.StatisticsError）は、PyVisualizer ではモジュール名を付けずに表示するので、前置きを除いて比べる
+    const last = e.stderr.trim().split('\n').pop().replace(/^[a-z_]+\.(?=[A-Z]\w*(:|$))/, '');
     return { out: e.stdout, errType: last.split(':')[0], errLine: last };
   }
 }

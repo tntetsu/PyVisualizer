@@ -16,6 +16,7 @@ import {
   invoke, isStaticMethod, isClassMethod, isProperty, makeProperty,
 } from './objects.js';
 import { isModule } from './modules.js';
+import { COUNTER_METHODS, DEQUE_METHODS, isDeque } from './lib/collections.js';
 
 const def = (name, fn) => { fn.pyName = name; return fn; };
 /** 組み込みの型（int・str など）。isinstance の型に使え、repr は <class 'int'> */
@@ -24,7 +25,9 @@ const defType = (name, fn) => { def(name, fn); fn.isType = true; return fn; };
 /** 組み込みの型の名前 → その型の値か */
 const TYPE_TESTS = {
   int: (v) => isInt(v) || isBool(v), bool: isBool, float: isFloat, str: isStr,
-  list: isList, tuple: isTuple, dict: isDict, set: isSet, object: () => true,
+  list: (v) => isList(v) && !isDeque(v), tuple: isTuple, dict: isDict, set: isSet, object: () => true,
+  // collections（ADR-013）
+  Counter: (v) => isDict(v) && v.subtype === 'Counter', defaultdict: (v) => isDict(v) && v.subtype === 'defaultdict', deque: isDeque,
 };
 
 /** isinstance(v, t)。t はクラス・組み込みの型・それらのタプル */
@@ -416,6 +419,7 @@ export const BUILTINS = {
   }),
   abs: def('abs', (args, _k, ctx) => {
     argCount('abs', args, 1, 1, ctx.loc);
+    if (isInstance(args[0])) { const r = callSpecial(args[0], '__abs__'); if (r !== undefined) return r; }
     if (!isNum(args[0])) throw new PyError('TypeError', `${typeName(args[0])} には abs() を使えません`, ctx.loc);
     return isFloat(args[0]) ? makeFloat(Math.abs(args[0].v)) : (num(args[0]) < 0 ? intOp('-', 0, args[0]) : intOp('+', 0, args[0]));
   }),
@@ -762,6 +766,10 @@ const SET_METHODS = {
 
 function escRe(s) { return s.replace(/[\]\\^-]/g, '\\$&'); }
 
+// collections の型のメソッド（ADR-013）
+const DEQUE_TABLE = { ...LIST_METHODS, ...DEQUE_METHODS };
+const COUNTER_TABLE = { ...DICT_METHODS, ...COUNTER_METHODS };
+
 /** 関数なら、self を最初の引数として渡すメソッドにする（bound method） */
 function bindMethod(v, self) {
   const isFn = (v && v.__type__ === 'JSFunction') || typeof v === 'function';
@@ -840,7 +848,8 @@ export function getAttr(obj, name, loc) {
   }
   if (typeof obj === 'function' && name === '__name__') return obj.pyName ?? obj.name;
   if (obj?.__type__ === 'JSFunction' && name === '__name__') return obj.name;   // 自作の関数の名前（デコレーターでよく使う。ADR-012）
-  const table = isList(obj) ? LIST_METHODS : isStr(obj) ? STR_METHODS : isDict(obj) ? DICT_METHODS : isSet(obj) ? SET_METHODS
+  const table = isDeque(obj) ? DEQUE_TABLE : isList(obj) ? LIST_METHODS : isStr(obj) ? STR_METHODS
+    : isDict(obj) && obj.subtype === 'Counter' ? COUNTER_TABLE : isDict(obj) ? DICT_METHODS : isSet(obj) ? SET_METHODS
     : isTuple(obj) ? { index: LIST_METHODS.index, count: LIST_METHODS.count } : null;
   const m = table && Object.prototype.hasOwnProperty.call(table, name) ? table[name] : null;
   if (!m) throw new PyError('AttributeError', `${typeName(obj)} に ${name} という属性はありません`, loc);

@@ -17,7 +17,7 @@
 
 [BhvVisualizer](../BhvVisualizer)（学習ログの収集・分析）と組み合わせて授業で使えるようにすることも目標です。
 
-**現在のステータス**: Phase 0〜3 完了（2026-11-25）。報告書は [docs/phase0-report.md](docs/phase0-report.md)〜[docs/phase3-report.md](docs/phase3-report.md)。パーサーは Lezer で確定。共通コア `js-interpreter/core` は JSInterpreter の作業ブランチ `feature/interp-core`（JSInterpreter の ADR-015）。フロントエンドは JSVisualizer の作業ブランチ `feature/multilang` の言語プロファイル（JSVisualizer の ADR-055）を使い、Python のプロファイルは [src/lang/python.js](src/lang/python.js)（[ADR-004](docs/adr/ADR-004-python-display-in-frontend.md)）。Python の値の表現は [ADR-002](docs/adr/ADR-002-python-value-representation.md)、トレースへの追加は [ADR-003](docs/adr/ADR-003-python-trace-additions.md)。方針（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲、BhvVisualizer 連携（Phase 6）は後回し。次は Phase 4（PyVisualizer アプリ：マニュアル・サンプルの見直し・デプロイ）。
+**現在のステータス**: Phase 0〜3 完了、Phase 4 は公開（デプロイ）以外を完了（2026-11-25。公開の判断待ち、[docs/phase4-report.md](docs/phase4-report.md) 4 節）。報告書は [docs/phase0-report.md](docs/phase0-report.md)〜[docs/phase4-report.md](docs/phase4-report.md)。パーサーは Lezer で確定。共通コア `js-interpreter/core` は JSInterpreter の作業ブランチ `feature/interp-core`（JSInterpreter の ADR-015）。フロントエンドは JSVisualizer の作業ブランチ `feature/multilang` の言語プロファイル（JSVisualizer の ADR-055）を使い、Python のプロファイルは [src/lang/python.js](src/lang/python.js)（[ADR-004](docs/adr/ADR-004-python-display-in-frontend.md)）。Python の値の表現は [ADR-002](docs/adr/ADR-002-python-value-representation.md)、トレースへの追加は [ADR-003](docs/adr/ADR-003-python-trace-additions.md)。方針（[docs/development-plan.md](docs/development-plan.md) 6 節）：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、MVP は 4.1 節の範囲、BhvVisualizer 連携（Phase 6）は後回し。
 
 ## 関連リポジトリ
 
@@ -40,7 +40,9 @@ PyVisualizer/
 │   ├── builtins.js           # 組み込み関数・list/str/dict のメソッド・f 文字列の書式指定
 │   ├── values.js             # 値の表現（int の number/BigInt・PyFloat・tuple・PyDict・PyRange。ADR-002）、repr/str、比較、反復
 │   └── py-debugger.js        # PyDebugger（TraceDebugger の派生、PY_NODE_CATEGORIES。debugger-adapter.js が使う名前でも export）
-├── samples/                  # Python のサンプル（JSVisualizer の組み込みサンプルに対応）
+├── samples/                  # Python のサンプル 23 本（JSVisualizer の組み込みサンプルに対応）と samples.json（表示名・分類・既定。ビルドが食い違いを検出する）
+├── manual/                   # 利用者向けマニュアル（manual.html・manual.en.html と ja/・en/ のスクリーンショット）。ビルドが web/ にコピーする
+├── .github/workflows/deploy.yml  # GitHub Pages へのデプロイ（今は手動実行のみ。兄弟リポジトリの作業ブランチを clone してビルド）
 ├── tests/
 │   ├── oracle.test.js        # CPython（python3）を正解とした比較（samples/ と tests/cases/）
 │   ├── parse.test.js         # 構文エラーの検出と説明、AST の形
@@ -53,6 +55,7 @@ PyVisualizer/
 ├── scripts/
 │   ├── build.mjs             # web/ にビルド（JSVisualizer のフロントエンド＋Python のプロファイル。CodeMirror の重複を避ける）
 │   ├── capture-spike.mjs     # 全サンプル × 全タブのスクリーンショットとブラウザのエラーを収集
+│   ├── capture-manual-screenshots.mjs  # マニュアルのスクリーンショットを manual/ja・manual/en に撮り直す
 │   ├── compare-js-core.mjs   # JSInterpreter の master と作業ブランチで JS のトレースを 1 件ずつ比べる
 │   └── capture-js-dom.mjs    # JSVisualizer（JS 版）の全サンプル・全タブの画面の状態を記録し、2 つのビルドを比べる（Phase 3）
 ├── web/                      # ビルド出力（gitignore 対象）
@@ -62,6 +65,7 @@ PyVisualizer/
 │   ├── phase1-report.md      # Phase 1 の報告書（共通コアの中身、Phase 0 の項目の解消、検証の方法）
 │   ├── phase2-report.md      # Phase 2 の報告書（辞書・大きな整数・連続代入、変数の状態の比較テスト）
 │   ├── phase3-report.md      # Phase 3 の報告書（言語プロファイル、JS 版の画面の一致の確認、Python 版の画面）
+│   ├── phase4-report.md      # Phase 4 の報告書（サンプル、マニュアル、デプロイの準備）
 │   ├── phase0/               # 報告書のスクリーンショット
 │   └── adr/                  # Architecture Decision Records（ADR-001〜）
 ├── CLAUDE.md                 # このファイル
@@ -75,6 +79,7 @@ PyVisualizer/
 npm install                            # 兄弟ディレクトリに ../JSInterpreter-core・../JSVisualizer が必要（file: 依存。下記）
 npm test                               # 全テスト（node:test。CPython との比較に python3 が必要）
 node scripts/build.mjs --serve         # http://127.0.0.1:8123/ で確認
+node scripts/capture-manual-screenshots.mjs   # 画面を変えたらマニュアルのスクリーンショットを撮り直す
 node scripts/capture-spike.mjs <出力先> [サンプルid...]   # スクリーンショットの収集
 node scripts/compare-js-core.mjs       # JSInterpreter の master と作業ブランチで JS のトレースが一致するか
 ```

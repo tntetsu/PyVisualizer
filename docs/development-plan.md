@@ -126,7 +126,7 @@ Python のコードを JS の AST に変換して JSInterpreter の評価器で�
 | **4. PyVisualizer アプリ** ✅ 2026-11-25 完了（公開は Phase 5 の後、2026-11-25） | サンプル 23 本（`samples/samples.json` で表示名・分類）、全サンプル × 全タブの確認、Python 版のマニュアル（日本語・英語）、GitHub Pages のワークフロー（手動実行のみ。公開は判断待ち） | [phase4-report.md](phase4-report.md) | 全サンプル × 全タブでブラウザのエラー 0 件、テスト 122 件が通る。公開は未実施 |
 | **5. Python の対象拡大** ✅ 2026-11-25 完了 | 基本の拡張（内包表記・set・del・スライスへの代入・ループの else・% 書式・*args/**kwargs）、例外（try/except/else/finally・raise・assert）、class（継承・super()・特殊メソッド）、import math と input()（画面の入力欄）。ジェネレーターは対象外 | [phase5-report.md](phase5-report.md)、ADR-005〜007 | CPython との比較（出力 58 件・変数の状態 37 件）を含む 166 件がすべて通る |
 | **6. BhvVisualizer 連携** | 2.5 節の変更 | | 既存の e2e（exercise-flow・viewer-host・analysis-dashboard）＋ Python のコードを使う e2e が通る |
-| 7.（将来）Java / C++ | 同じ手順でエンジンを追加 | | |
+| 7.（将来）Java / C / C++ / TypeScript | 同じ手順でエンジンを追加。計画の出発点は [multilang-plan.md](multilang-plan.md)（2026-11-25） | | |
 
 Phase 2 と Phase 3 は並行して進められる。Phase 0 の結果、評価器の制御構造ヘルパーは共通化しない（Python の評価器は Recorder・シグナル・Environment を使うだけで十分簡潔に書けた）。
 

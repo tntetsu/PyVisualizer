@@ -67,6 +67,7 @@ PyVisualizer/
 ├── web/                      # ビルド出力（gitignore 対象）
 ├── docs/
 │   ├── development-plan.md   # 開発計画書（アーキテクチャ・フェーズ・リスク・決定事項）
+│   ├── multilang-plan.md     # 多言語化の計画（Java・C／C++・TypeScript・JS の Lezer 化。各リポジトリの計画書の出発点）
 │   ├── phase0-report.md      # Phase 0 の報告書（共通化の検証、ビューごとの問題、Lezer の評価）
 │   ├── phase1-report.md      # Phase 1 の報告書（共通コアの中身、Phase 0 の項目の解消、検証の方法）
 │   ├── phase2-report.md      # Phase 2 の報告書（辞書・大きな整数・連続代入、変数の状態の比較テスト）

@@ -183,14 +183,13 @@ Python の LEGB 規則に従う。関数本体の中で代入される名前は�
 JSVisualizer のリポジトリと同程度にする。JSVisualizer には次のものがある。
 
 - README.md・README.en.md（それぞれ約 330 行。概要・使い方・ビューの説明・開発の方法など）
-- CITATION.cff、LICENSE
+- LICENSE
 - 画像（`img/`）
 - 利用者向けマニュアル（日本語・英語）
 
 PyVisualizer では次を行う。
 
 - README.md を日本語・英語で書く（今は 13 行の短いもの）
-- CITATION.cff を足す
 - マニュアルを Phase 5 で増えた範囲に合わせる
 - 公開してよい文書かを見直す（計画書・報告書には授業の運用の記述がある）
 - リポジトリを公開するか、非公開のまま有料のプランで Pages を使うかを決める（[phase4-report.md](phase4-report.md) 4 節）

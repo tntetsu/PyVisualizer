@@ -47,6 +47,8 @@ PyVisualizer は、土台を兄弟ディレクトリ（`file:../JSInterpreter-co
 
 PyVisualizer の CI（`.github/workflows/deploy.yml`）も、ブランチの最新からタグの参照に変える。
 
+**済み（2026-11-25）**：JSInterpreter に `multilang-core-2026.11.25`（`feature/interp-core`）・`multilang-master-2026.11.25`（master。JS のエンジンの bundle を作る）、JSVisualizer に `multilang-2026.11.25`（`feature/multilang`）を付け、PyVisualizer の CI はワークフローの `env` でこれらを参照する。master にもタグを付けたのは、学期中に授業用の修正が master に入っても、各言語のビルドが変わらないようにするため。
+
 ### 3.2 学期後：土台を独立させる
 
 JSInterpreter・JSVisualizer の作業ブランチを main にマージするとき（2027 年 2 月以降）に、どちらかに決める。

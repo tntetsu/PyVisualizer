@@ -92,7 +92,7 @@ node scripts/capture-spike.mjs <出力先> [サンプルid...]   # スクリー�
 node scripts/compare-js-core.mjs       # JSInterpreter の master と作業ブランチで JS のトレースが一致するか
 ```
 
-> **依存先**：`js-interpreter` は JSInterpreter の作業ブランチ `feature/interp-core` を指す（`file:../JSInterpreter-core`。`git -C ../JSInterpreter worktree add ../JSInterpreter-core feature/interp-core` で作る）。共通コア（`js-interpreter/core`）は main（master）にはまだない（学期後にマージ）。`js-visualizer` は JSVisualizer の作業ブランチ `feature/multilang` を指す（`file:../JSVisualizer-multilang`。`git -C ../JSVisualizer worktree add ../JSVisualizer-multilang feature/multilang` で作る。言語プロファイルは main にはまだない）。
+> **依存先**：`js-interpreter` は JSInterpreter の作業ブランチ `feature/interp-core` を指す（`file:../JSInterpreter-core`。`git -C ../JSInterpreter worktree add ../JSInterpreter-core feature/interp-core` で作る）。共通コア（`js-interpreter/core`）は main（master）にはまだない（学期後にマージ）。`js-visualizer` は JSVisualizer の作業ブランチ `feature/multilang` を指す（`file:../JSVisualizer-multilang`。`git -C ../JSVisualizer worktree add ../JSVisualizer-multilang feature/multilang` で作る。言語プロファイルは main にはまだない）。CI（`.github/workflows/deploy.yml`）は、兄弟リポジトリをブランチの最新ではなくタグ（`multilang-core-2026.11.25` など、ワークフローの `env`）で固定して取得する。土台を変えたら兄弟リポジトリに新しいタグを付け、`env` を書き換える（[docs/multilang-plan.md](docs/multilang-plan.md) 3.1 節）。
 
 > テストは Jest ではなく Node 標準の `node:test` を使う（ES modules のまま追加の設定なしで動くため）。
 

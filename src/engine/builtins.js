@@ -6,12 +6,35 @@
  */
 import {
   PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet, dictGet, dictHas, dictDelete, dictEntries,
-  intOp, normInt, makeSet, setAdd, setHas, setDiscard, isSet,
+  intOp, normInt, makeSet, setAdd, setHas, setDiscard, isSet, NOT_IMPLEMENTED,
   isFloat, isInt, isBool, isNum, isStr, isTuple, isList, isDict, num, typeName,
-  truthy, repr, str, pyEq, pyCmp, iterate,
+  truthy, repr, str, pyEq, pyCmp, richCompare, iterate,
 } from './values.js';
 
+import {
+  ObjectClass, EXCEPTIONS, isClass, isInstance, classLookup, callSpecial,
+} from './objects.js';
+
 const def = (name, fn) => { fn.pyName = name; return fn; };
+/** 組み込みの型（int・str など）。isinstance の型に使え、repr は <class 'int'> */
+const defType = (name, fn) => { def(name, fn); fn.isType = true; return fn; };
+
+/** 組み込みの型の名前 → その型の値か */
+const TYPE_TESTS = {
+  int: (v) => isInt(v) || isBool(v), bool: isBool, float: isFloat, str: isStr,
+  list: isList, tuple: isTuple, dict: isDict, set: isSet, object: () => true,
+};
+
+/** isinstance(v, t)。t はクラス・組み込みの型・それらのタプル */
+function isInstanceOf(v, t, loc) {
+  if (isTuple(t)) return t.some(x => isInstanceOf(v, x, loc));
+  if (isClass(t)) {
+    if (t === ObjectClass) return true;
+    return isInstance(v) && v.cls.mro.includes(t);
+  }
+  if (typeof t === 'function' && t.isType) return TYPE_TESTS[t.pyName]?.(v) ?? false;
+  throw new PyError('TypeError', 'isinstance() の 2 番目の引数は、クラスか型（またはそのタプル）です', loc);
+}
 
 function argCount(name, args, min, max, loc) {
   if (args.length < min || args.length > max) {
@@ -68,7 +91,8 @@ function minMax(name, sign) {
     let best = items[0], bestK = keyFn ? ctx.call(keyFn, [best]) : best;
     for (const v of items.slice(1)) {
       const k = keyFn ? ctx.call(keyFn, [v]) : v;
-      if (sign * pyCmp(k, bestK, '<', ctx.loc) > 0) { best = v; bestK = k; }
+      // CPython と同じく、max は「k > 最大」、min は「k < 最小」で比べる
+      if (richCompare(k, bestK, sign > 0 ? '>' : '<', ctx.loc)) { best = v; bestK = k; }
     }
     return best;
   });
@@ -176,6 +200,10 @@ export const BUILTINS = {
   len: def('len', (args, _k, ctx) => {
     argCount('len', args, 1, 1, ctx.loc);
     const v = args[0];
+    if (isInstance(v)) {
+      const n = callSpecial(v, '__len__');
+      if (n !== undefined) return n;
+    }
     if (isStr(v) || Array.isArray(v)) return v.length;
     if (isDict(v)) return v.keys.length;
     if (v instanceof PyRange) return v.length;
@@ -218,10 +246,10 @@ export const BUILTINS = {
     const n = Math.min(...lists.map(l => l.length));
     return Array.from({ length: lists.length ? n : 0 }, (_, i) => makeTuple(lists.map(l => l[i])));
   }),
-  str:  def('str', (args) => (args.length ? str(args[0]) : '')),
+  str:  defType('str', (args) => (args.length ? str(args[0]) : '')),
   repr: def('repr', (args) => repr(args[0])),
-  bool: def('bool', (args) => (args.length ? truthy(args[0]) : false)),
-  int: def('int', (args, _k, ctx) => {
+  bool: defType('bool', (args) => (args.length ? truthy(args[0]) : false)),
+  int: defType('int', (args, _k, ctx) => {
     if (!args.length) return 0;
     const v = args[0];
     if (isBool(v)) return num(v);
@@ -233,17 +261,17 @@ export const BUILTINS = {
     if (isStr(v) && /^\s*[+-]?\d+\s*$/.test(v.replace(/_/g, ''))) return normInt(BigInt(v.replace(/_/g, '').trim()));
     throw new PyError('ValueError', `${repr(v)} は整数に変換できません`, ctx.loc);
   }),
-  float: def('float', (args, _k, ctx) => {
+  float: defType('float', (args, _k, ctx) => {
     if (!args.length) return makeFloat(0);
     const v = args[0];
     if (isNum(v)) return makeFloat(num(v));
     if (isStr(v) && v.trim() !== '' && !Number.isNaN(Number(v))) return makeFloat(Number(v));
     throw new PyError('ValueError', `${repr(v)} は小数に変換できません`, ctx.loc);
   }),
-  list:  def('list', (args, _k, ctx) => (args.length ? [...iterate(args[0], ctx.loc)] : [])),
-  tuple: def('tuple', (args, _k, ctx) => makeTuple(args.length ? [...iterate(args[0], ctx.loc)] : [])),
-  set:   def('set', (args, _k, ctx) => makeSet(args.length ? [...iterate(args[0], ctx.loc)] : [], ctx.loc)),
-  dict:  def('dict', (args, kwargs, ctx) => {
+  list:  defType('list', (args, _k, ctx) => (args.length ? [...iterate(args[0], ctx.loc)] : [])),
+  tuple: defType('tuple', (args, _k, ctx) => makeTuple(args.length ? [...iterate(args[0], ctx.loc)] : [])),
+  set:   defType('set', (args, _k, ctx) => makeSet(args.length ? [...iterate(args[0], ctx.loc)] : [], ctx.loc)),
+  dict:  defType('dict', (args, kwargs, ctx) => {
     const d = makeDict();
     if (args.length) {
       if (isDict(args[0])) dictEntries(args[0]).forEach(([k, v]) => dictSet(d, k, v, ctx.loc));
@@ -271,6 +299,43 @@ export const BUILTINS = {
     if (!isStr(args[0]) || [...args[0]].length !== 1) throw new PyError('TypeError', 'ord() には 1 文字の文字列が必要です', ctx.loc);
     return args[0].codePointAt(0);
   }),
+  object: ObjectClass,
+  ...EXCEPTIONS,
+  NotImplemented: NOT_IMPLEMENTED,
+  isinstance: def('isinstance', (args, _k, ctx) => { argCount('isinstance', args, 2, 2, ctx.loc); return isInstanceOf(args[0], args[1], ctx.loc); }),
+  issubclass: def('issubclass', (args, _k, ctx) => {
+    argCount('issubclass', args, 2, 2, ctx.loc);
+    const [c, t] = args;
+    if (!isClass(c)) throw new PyError('TypeError', 'issubclass() の最初の引数はクラスです', ctx.loc);
+    return (isTuple(t) ? [...t] : [t]).some(x => isClass(x) && c.mro.includes(x));
+  }),
+  type: def('type', (args, _k, ctx) => {
+    argCount('type', args, 1, 1, ctx.loc);
+    const v = args[0];
+    if (isInstance(v)) return v.cls;
+    const tn = typeName(v);
+    return BUILTINS[tn]?.isType ? BUILTINS[tn] : defType(tn, () => { throw new PyError('TypeError', `${tn} は呼び出せません`, ctx.loc); });
+  }),
+  super: def('super', (args, _k, ctx) => {
+    if (args.length === 2) return { __type__: 'PySuper', cls: args[0], self: args[1] };
+    let e = ctx.env;
+    while (e && !e.fn) e = e.parent;
+    const fn = e?.fn;
+    if (!fn?.ownerClass) throw new PyError('RuntimeError', 'super() は、クラスの中で定義したメソッドの中で使います', ctx.loc);
+    const first = fn.paramSpec[0];
+    if (!first) throw new PyError('RuntimeError', 'super() を使うメソッドには self の引数が必要です', ctx.loc);
+    return { __type__: 'PySuper', cls: fn.ownerClass, self: e.bindings.get(first.name) };
+  }),
+  hasattr: def('hasattr', (args, _k, ctx) => {
+    try { getAttr(args[0], args[1], ctx.loc); return true; } catch (e) { if (e instanceof PyError && e.pyType === 'AttributeError') return false; throw e; }
+  }),
+  getattr: def('getattr', (args, _k, ctx) => {
+    try { return getAttr(args[0], args[1], ctx.loc); } catch (e) {
+      if (args.length > 2 && e instanceof PyError && e.pyType === 'AttributeError') return args[2];
+      throw e;
+    }
+  }),
+  setattr: def('setattr', (args, _k, ctx) => { setAttr(args[0], args[1], args[2], ctx.loc); return null; }),
   input: def('input', (_a, _k, ctx) => {
     throw new PyError('NotImplemented', 'input() はまだ対応していません（入力をあらかじめ与える方式を Phase 5 で検討）', ctx.loc);
   }),
@@ -388,8 +453,51 @@ const SET_METHODS = {
 
 function escRe(s) { return s.replace(/[\]\\^-]/g, '\\$&'); }
 
-/** obj.name を取り出す（スパイクではメソッドだけ。呼び出し可能な JS 関数を返す） */
+/** 関数なら、self を最初の引数として渡すメソッドにする（bound method） */
+function bindMethod(v, self) {
+  const isFn = (v && v.__type__ === 'JSFunction') || typeof v === 'function';
+  if (!isFn) return v;
+  return def(`${self.cls?.name ?? typeName(self)}.${v.name ?? v.pyName}`, (args, kwargs, ctx) => ctx.call(v, [self, ...args], kwargs));
+}
+
+const noAttr = (obj, name, loc) => new PyError('AttributeError', `${typeName(obj)} に ${name} という属性はありません`, loc);
+
+/** obj.name = value */
+export function setAttr(obj, name, value, loc) {
+  if (isInstance(obj) || isClass(obj)) { obj.attrs[name] = value; return; }
+  throw new PyError('AttributeError', `${typeName(obj)} には属性を追加できません`, loc);
+}
+
+/** del obj.name */
+export function delAttr(obj, name, loc) {
+  if ((isInstance(obj) || isClass(obj)) && Object.prototype.hasOwnProperty.call(obj.attrs, name)) { delete obj.attrs[name]; return; }
+  throw noAttr(obj, name, loc);
+}
+
+/** obj.name を取り出す。メソッドは、呼び出し可能な JS 関数（self を束縛したもの）を返す */
 export function getAttr(obj, name, loc) {
+  if (isInstance(obj)) {
+    if (Object.prototype.hasOwnProperty.call(obj.attrs, name)) return obj.attrs[name];
+    if (name === 'args' && obj.args) return obj.args;
+    if (name === '__class__') return obj.cls;
+    if (name === '__dict__') return makeDict(Object.entries(obj.attrs));
+    const v = classLookup(obj.cls, name);
+    if (v !== undefined) return bindMethod(v, obj);
+    throw noAttr(obj, name, loc);
+  }
+  if (isClass(obj)) {
+    if (name === '__name__') return obj.name;
+    const v = classLookup(obj, name);
+    if (v !== undefined) return v;
+    throw noAttr(obj, name, loc);
+  }
+  if (obj && obj.__type__ === 'PySuper') {
+    const mro = isInstance(obj.self) ? obj.self.cls.mro : obj.self.mro;
+    const v = classLookup(isInstance(obj.self) ? obj.self.cls : obj.self, name, mro.indexOf(obj.cls) + 1);
+    if (v === undefined) throw new PyError('AttributeError', `super() の先に ${name} という属性はありません`, loc);
+    return bindMethod(v, obj.self);
+  }
+  if (typeof obj === 'function' && name === '__name__') return obj.pyName ?? obj.name;
   const table = isList(obj) ? LIST_METHODS : isStr(obj) ? STR_METHODS : isDict(obj) ? DICT_METHODS : isSet(obj) ? SET_METHODS
     : isTuple(obj) ? { index: LIST_METHODS.index, count: LIST_METHODS.count } : null;
   const m = table && Object.prototype.hasOwnProperty.call(table, name) ? table[name] : null;

@@ -8,6 +8,7 @@ import { PyDebugger, ExecutionError } from '../engine/py-debugger.js';
 import {
   PyFloat, PyRange, isTuple, isSet, isDict, num, repr, strRepr,
 } from '../engine/values.js';
+import { isClass, isInstance, isException } from '../engine/objects.js';
 
 /** Python の値の見せ方（JSVisualizer の ValueModel） */
 export const pythonValueModel = {
@@ -24,6 +25,8 @@ export const pythonValueModel = {
     }
     if (v instanceof PyFloat) return 'number';
     if (v instanceof PyRange) return 'other';
+    if (isClass(v)) return 'class';
+    if (isInstance(v)) return 'object';
     if (v.__type__ === 'JSFunction') return 'function';
     if (isDict(v)) return 'mapping';
     if (Array.isArray(v)) return 'sequence';
@@ -37,15 +40,18 @@ export const pythonValueModel = {
   },
   entries(v) {
     if (isDict(v)) return v.keys.map((k, i) => [repr(k), v.values[i]]);
+    if (isInstance(v)) return [...(isException(v) ? [['args', v.args]] : []), ...Object.entries(v.attrs)];
     if (Array.isArray(v)) return v.map((x, i) => [i, x]);
     return Object.entries(v).filter(([k]) => !k.startsWith('__'));
   },
   length(v) {
     if (isDict(v)) return v.keys.length;
+    if (isInstance(v)) return Object.keys(v.attrs).length + (isException(v) ? 1 : 0);
     if (Array.isArray(v)) return v.length;
     return Object.keys(v).filter(k => !k.startsWith('__')).length;
   },
   label(v) {
+    if (isInstance(v)) return v.cls.name;
     if (isDict(v)) return `dict[${v.keys.length}]`;
     if (isTuple(v)) return `tuple[${v.length}]`;
     if (isSet(v)) return `set[${v.length}]`;
@@ -53,6 +59,7 @@ export const pythonValueModel = {
     return 'object';
   },
   shortLabel(v) {
+    if (isInstance(v)) return v.cls.name;
     if (isDict(v)) return 'dict';
     if (isTuple(v)) return 'tuple';
     if (isSet(v)) return 'set';
@@ -86,8 +93,8 @@ export const createPythonProfile = (samples, { groups, defaultSample } = {}) => 
   defaultSample: defaultSample ?? Object.keys(samples)[0],
   // for の各回（LoopBinding）でも行を作る。Python には宣言・++・C 形式の for はない
   traceRowTypes: {
-    enter: ['ExpressionStatement', 'IfStatement', 'BreakStatement', 'ContinueStatement'],
-    exit:  ['AssignmentExpression', 'ReturnStatement', 'CallExpression', 'LoopBinding'],
+    enter: ['ExpressionStatement', 'IfStatement', 'BreakStatement', 'ContinueStatement', 'RaiseStatement', 'AssertStatement'],
+    exit:  ['AssignmentExpression', 'ReturnStatement', 'CallExpression', 'LoopBinding', 'ExceptBinding'],
   },
   valueModel: pythonValueModel,
   syntaxTokens: [

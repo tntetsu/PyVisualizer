@@ -15,11 +15,18 @@ import json
 import sys
 import types
 
-SKIP_TYPES = (types.FunctionType, types.BuiltinFunctionType, types.ModuleType, type)
+SKIP_TYPES = (types.FunctionType, types.BuiltinFunctionType, types.ModuleType, type, types.MethodType)
+BUILTIN_VALUE_TYPES = (int, float, str, bool, list, tuple, dict, set, frozenset, range, type(None))
 
 
 def srepr(v):
     """repr と同じだが、集合は要素の repr を並べ替えて出す（CPython の集合の順序はハッシュ値で決まり、PyVisualizer と比べられないため）"""
+    if isinstance(v, BaseException):
+        return f'<{type(v).__name__}>'   # 例外は型だけを比べる（PyVisualizer がエンジンで投げる例外のメッセージは日本語）
+    if not isinstance(v, BUILTIN_VALUE_TYPES) and hasattr(v, '__dict__'):
+        # ユーザー定義のクラスのインスタンスは、ユーザーの __repr__ を呼ばずに属性から作る
+        # （__init__ の途中などで __repr__ が失敗しうるため。PyVisualizer 側も同じ形にする）
+        return f'<{type(v).__name__} {srepr(dict(vars(v)))}>'
     if isinstance(v, (set, frozenset)):
         return '{' + ', '.join(sorted(srepr(x) for x in v)) + '}' if v else 'set()'
     if isinstance(v, list):

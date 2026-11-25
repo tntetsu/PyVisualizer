@@ -24,6 +24,7 @@ export class PyError extends Error {
     super(`${pyType}: ${message}${loc ? `（${loc.line}行目）` : ''}`);
     this.name = pyType;
     this.pyType = pyType;
+    this.pyMessage = message;   // except で捕まえたときの例外の引数（str(e)）
     this.loc = loc;
   }
 }
@@ -90,6 +91,10 @@ export const isList  = (v) => Array.isArray(v) && !isTuple(v) && !isSet(v);
 export const isSeq   = (v) => Array.isArray(v) && !isSet(v);
 export const isDict  = (v) => v !== null && typeof v === 'object' && v.__type__ === 'PyDict';
 export const isFunc  = (v) => (v && v.__type__ === 'JSFunction') || typeof v === 'function';
+
+import {
+  isInstance, isClass, isException, callSpecial, exceptionText, classLookup,
+} from './objects.js';
 
 /** 数値を JS の number として取り出す（bool は 0/1、BigInt は近似）。float の計算に使う */
 export const num = (v) => (isBool(v) ? (v ? 1 : 0) : isFloat(v) ? v.v : typeof v === 'bigint' ? Number(v) : v);
@@ -184,7 +189,7 @@ export function hashKey(k, loc) {
   if (isStr(k)) return `s:${k}`;
   if (isTuple(k)) return `t:(${k.map(x => hashKey(x, loc)).join(',')})`;
   if (k instanceof PyRange) return `r:${k.start},${k.stop},${k.step}`;
-  if (isFunc(k)) {
+  if (isFunc(k) || isInstance(k) || isClass(k)) {
     if (!funcIds.has(k)) funcIds.set(k, nextFuncId++);
     return `f:${funcIds.get(k)}`;
   }
@@ -289,6 +294,8 @@ export function typeName(v) {
   if (isList(v)) return 'list';
   if (isDict(v)) return 'dict';
   if (v instanceof PyRange) return 'range';
+  if (isInstance(v)) return v.cls.name;
+  if (isClass(v)) return 'type';
   if (isFunc(v)) return typeof v === 'function' ? 'builtin_function_or_method' : 'function';
   return 'object';
 }
@@ -300,6 +307,12 @@ export function truthy(v) {
   if (isStr(v) || Array.isArray(v)) return v.length > 0;
   if (isDict(v)) return v.keys.length > 0;
   if (v instanceof PyRange) return v.length > 0;
+  if (isInstance(v)) {
+    const b = callSpecial(v, '__bool__');
+    if (b !== undefined) return truthy(b);
+    const n = callSpecial(v, '__len__');
+    if (n !== undefined) return truthy(n);
+  }
   return true;
 }
 
@@ -318,7 +331,14 @@ export function repr(v, seen = new Set()) {
   if (isFloat(v)) return v.toString();
   if (isStr(v)) return strRepr(v);
   if (v instanceof PyRange) return v.toString();
-  if (typeof v === 'function') return `<built-in function ${v.pyName ?? v.name}>`;
+  if (typeof v === 'function') return v.isType ? `<class '${v.pyName}'>` : `<built-in function ${v.pyName ?? v.name}>`;
+  if (isClass(v)) return v.builtin ? `<class '${v.name}'>` : `<class '__main__.${v.name}'>`;
+  if (isInstance(v)) {
+    const r = callSpecial(v, '__repr__');
+    if (r !== undefined) return str(r);
+    if (isException(v)) return `${v.cls.name}(${[...v.args].map(x => repr(x)).join(', ')})`;
+    return `<__main__.${v.cls.name} object>`;
+  }
   if (v.__type__ === 'JSFunction') return v.isLambda ? '<function <lambda>>' : `<function ${v.name}>`;
   if (seen.has(v)) return isDict(v) ? '{...}' : '[...]';
   seen.add(v);
@@ -331,11 +351,26 @@ export function repr(v, seen = new Set()) {
   return String(v);
 }
 
-export function str(v) { return isStr(v) ? v : repr(v); }
+export function str(v) {
+  if (isStr(v)) return v;
+  if (isInstance(v)) {
+    const r = callSpecial(v, '__str__');
+    if (r !== undefined) return str(r);
+    if (isException(v) && !classLookup(v.cls, '__repr__')) return exceptionText(v, str, repr);
+  }
+  return repr(v);
+}
 
 // ── 比較 ──────────────────────────────────────────────────────────────────────
 
 export function pyEq(a, b) {
+  if (isInstance(a) || isInstance(b)) {
+    for (const [x, y] of [[a, b], [b, a]]) {
+      const r = callSpecial(x, '__eq__', [y]);
+      if (r !== undefined && r !== NOT_IMPLEMENTED) return truthy(r);
+    }
+    return a === b;
+  }
   if (isNum(a) && isNum(b)) {
     if (!isFloat(a) && !isFloat(b)) return intCmp(a, b) === 0;
     return num(a) === num(b);
@@ -355,8 +390,40 @@ export function pyEq(a, b) {
   return a === b;
 }
 
-/** a < b など順序の比較。戻り値は負・0・正 */
+const SPECIAL_CMP = { '<': '__lt__', '>': '__gt__', '<=': '__le__', '>=': '__ge__' };
+const REFLECTED = { '<': '>', '>': '<', '<=': '>=', '>=': '<=' };
+
+/**
+ * a <op> b（< > <= >=）を CPython と同じ手順で比べる：インスタンスなら、その演算子の特殊メソッドを呼び、
+ * 定義がない（NotImplemented）なら、反対側の反射した特殊メソッドを呼ぶ（a > b なら b.__lt__(a)）。
+ */
+export function richCompare(a, b, op, loc) {
+  if (isInstance(a) || isInstance(b)) {
+    const r = callSpecial(a, SPECIAL_CMP[op], [b]);
+    if (r !== undefined && r !== NOT_IMPLEMENTED) return truthy(r);
+    const rr = callSpecial(b, SPECIAL_CMP[REFLECTED[op]], [a]);
+    if (rr !== undefined && rr !== NOT_IMPLEMENTED) return truthy(rr);
+    throw new PyError('TypeError', `${typeName(a)} と ${typeName(b)} は「${op}」で比べられません`, loc);
+  }
+  const c = pyCmp(a, b, op, loc);
+  return op === '<' ? c < 0 : op === '>' ? c > 0 : op === '<=' ? c <= 0 : c >= 0;
+}
+
+/** a < b など順序の比較。戻り値は負・0・正（並べ替えなどに使う） */
+/** 特殊メソッドが比較を扱わないことを表す値（NotImplemented） */
+export const NOT_IMPLEMENTED = Object.freeze({ __notImplemented: true, toString: () => 'NotImplemented' });
+
 export function pyCmp(a, b, op, loc) {
+  if (isInstance(a) || isInstance(b)) {
+    const lt = callSpecial(a, '__lt__', [b]);
+    if (lt !== undefined && lt !== NOT_IMPLEMENTED) {
+      if (truthy(lt)) return -1;
+      const gt = callSpecial(b, '__lt__', [a]);
+      return gt !== undefined && truthy(gt) ? 1 : 0;
+    }
+    const gt = callSpecial(b, '__lt__', [a]);
+    if (gt !== undefined && gt !== NOT_IMPLEMENTED) return truthy(gt) ? 1 : (pyEq(a, b) ? 0 : -1);
+  }
   if (isNum(a) && isNum(b)) {
     if (!isFloat(a) && !isFloat(b)) return intCmp(a, b);
     return num(a) - num(b);
@@ -383,6 +450,10 @@ export function* iterate(v, loc) {
 }
 
 export function contains(container, item, loc) {
+  if (isInstance(container)) {
+    const r = callSpecial(container, '__contains__', [item]);
+    if (r !== undefined) return truthy(r);
+  }
   if (isStr(container)) {
     if (!isStr(item)) throw new PyError('TypeError', `文字列の in の左側は文字列でなければなりません（${typeName(item)}）`, loc);
     return container.includes(item);

@@ -356,11 +356,59 @@ export function parse(src) {
       case 'StatementGroup':    // 「a = 1; b = 2」
         return c.filter(k => !isTok(k, ';')).flatMap(stmt);
 
-      case 'ClassDefinition':   return unsupported('class', n);
-      case 'TryStatement':      return unsupported('try 文', n);
+      case 'ClassDefinition': {
+        const nameNode = c.find(k => k.name === 'VariableName');
+        const argList = c.find(k => k.name === 'ArgList');
+        const bases = argList ? splitBy(kids(argList).filter(k => !isTok(k, '(', ')')), [',']).filter(g => g.length).map(g => {
+          if (g.length !== 1) unsupported(`基底クラスの指定「${g.map(text).join('')}」`, g[0]);
+          return expr(g[0]);
+        }) : [];
+        const body = block(c.find(k => k.name === 'Body'));
+        return [mk('ClassDeclaration', n.from, body.range[1], {
+          id: mk('Identifier', nameNode.from, nameNode.to, { name: text(nameNode) }), bases, body,
+        })];
+      }
+      case 'TryStatement': {
+        // try Body (except [型 [as 名前]] Body)* [else Body] [finally Body]
+        let block_ = null, orelse = null, finalizer = null;
+        const handlers = [];
+        for (let i = 0; i < c.length;) {
+          const k = c[i];
+          if (isTok(k, 'try')) { block_ = block(c[i + 1]); i += 2; continue; }
+          if (isTok(k, 'except')) {
+            let j = i + 1;
+            const head = [];
+            while (c[j].name !== 'Body') head.push(c[j++]);
+            const asIdx = head.findIndex(h => isTok(h, 'as'));
+            const typeNodes = asIdx >= 0 ? head.slice(0, asIdx) : head;
+            const handlerBody = block(c[j]);
+            handlers.push(mk('ExceptHandler', k.from, handlerBody.range[1], {
+              exType: typeNodes.length ? exprList(typeNodes) : null,
+              name: asIdx >= 0 ? text(head[asIdx + 1]) : null,
+              // except の行（「except 型 as 名前」の範囲）。捕まえたときの ExceptBinding の位置に使う
+              head: { loc: pm.loc(k.from), end: pm.end((head.length ? head[head.length - 1] : k).to) },
+              body: handlerBody,
+            }));
+            i = j + 1;
+            continue;
+          }
+          if (isTok(k, 'else')) { orelse = block(c[i + 1]); i += 2; continue; }
+          if (isTok(k, 'finally')) { finalizer = block(c[i + 1]); i += 2; continue; }
+          i++;
+        }
+        const last = finalizer ?? orelse ?? handlers[handlers.length - 1] ?? block_;
+        return [mk('TryStatement', n.from, last.range[1], { block: block_, handlers, orelse, finalizer })];
+      }
       case 'WithStatement':     return unsupported('with 文', n);
       case 'ImportStatement':   return unsupported('import', n);
-      case 'RaiseStatement':    return unsupported('raise', n);
+      case 'RaiseStatement': {
+        const fromIdx = c.findIndex(k => isTok(k, 'from'));
+        const excNodes = c.slice(1, fromIdx >= 0 ? fromIdx : c.length);
+        return [mk('RaiseStatement', n.from, n.to, {
+          exc: excNodes.length ? exprList(excNodes) : null,
+          cause: fromIdx >= 0 ? exprList(c.slice(fromIdx + 1)) : null,
+        })];
+      }
       case 'DeleteStatement': {
         const targets = splitBy(c.slice(1), [',']).filter(g => g.length).map(g => {
           if (g.length !== 1) unsupported(`del の対象「${g.map(text).join('')}」`, g[0]);
@@ -370,7 +418,12 @@ export function parse(src) {
         });
         return [mk('DeleteStatement', n.from, n.to, { targets })];
       }
-      case 'AssertStatement':   return unsupported('assert', n);
+      case 'AssertStatement': {
+        const groups = splitBy(c.slice(1), [',']);
+        return [mk('AssertStatement', n.from, n.to, {
+          test: exprList(groups[0]), msg: groups[1]?.length ? exprList(groups[1]) : null,
+        })];
+      }
       case 'MatchStatement':    return unsupported('match 文', n);
       case 'Decorator':         return unsupported('デコレーター', n);
       default:                  return unsupported(`文「${n.name}」`, n);

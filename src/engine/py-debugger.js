@@ -10,23 +10,25 @@
  */
 import { TraceDebugger, ExecutionError, finalizePartialTrace } from 'js-interpreter/core';
 import { parse } from './parse.js';
-import { evaluate, createRecorder, PyScope } from './interpreter.js';
+import { evaluate, createRecorder, PyScope, installInvoker } from './interpreter.js';
 import { PyError } from './values.js';
 
 /**
  * Python のノード型の役割（共通コアの NodeCategories）
- * - for x in ... の各回のループ変数への代入（LoopBinding）で止まる
+ * - for x in ... の各回のループ変数への代入（LoopBinding）、except で捕まえたところ（ExceptBinding）で止まる
  * - while は毎回の条件式で止まる（condLoop）。C 形式の for はないので forLoop は空
  */
 export const PY_NODE_CATEGORIES = Object.freeze({
-  stopOnExit: ['AssignmentExpression', 'ReturnStatement', 'LoopBinding'],
+  // LoopBinding：for・内包表記の各回のループ変数への代入（ADR-003）。ExceptBinding：except で例外を捕まえたところ（ADR-006）
+  stopOnExit: ['AssignmentExpression', 'ReturnStatement', 'LoopBinding', 'ExceptBinding'],
   call:       ['CallExpression'],
   block:      ['BlockStatement'],
   branch:     ['IfStatement', 'ConditionalExpression'],
   condLoop:   ['WhileStatement'],
   forLoop:    [],
   forInit:    [],
-  exprStmt:   ['ExpressionStatement'],
+  // raise・assert は、例外で中断したら（exit がない）その文の enter で止まる（式文と同じ扱い）
+  exprStmt:   ['ExpressionStatement', 'RaiseStatement', 'AssertStatement'],
 });
 
 /**
@@ -38,8 +40,10 @@ export function runPython(source, { maxSteps = 100_000 } = {}) {
   const ast = parse(source);
   const recorder = createRecorder(maxSteps);
   const env = new PyScope(null, 'global');
+  const rt = { recorder };
+  installInvoker(rt);
   try {
-    evaluate(ast, env, { recorder }, 0, 0);
+    evaluate(ast, env, rt, 0, 0);
   } catch (e) {
     // ホストの JS のスタックがあふれた場合は、Python の RecursionError として扱う
     // （Node の既定のスタックで約 290 段。CPython の上限 1000 段より浅い。docs/phase0-report.md 3.2 節 g）

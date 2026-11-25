@@ -10,11 +10,15 @@ import {
 } from 'js-interpreter/core';
 import {
   PyError, PyRange, makeFloat, makeTuple, makeDict, dictSet, dictGet, dictDelete, dictEntries, intOp, normInt, big,
-  makeSet, setAdd, setHas, isSet, isSeq,
+  makeSet, setAdd, setHas, isSet, isSeq, NOT_IMPLEMENTED,
   isFloat, isInt, isBool, isNum, isStr, isTuple, isList, isDict, num, typeName,
-  truthy, repr, str, pyEq, pyCmp, iterate, contains, pyCloneHook,
+  truthy, repr, str, pyEq, pyCmp, richCompare, iterate, contains, pyCloneHook,
 } from './values.js';
-import { BUILTINS, getAttr, formatValue, percentFormat } from './builtins.js';
+import { BUILTINS, getAttr, setAttr, delAttr, formatValue, percentFormat } from './builtins.js';
+import {
+  PyClass, ObjectClass, isClass, isInstance, isExceptionClass, isException, makeInstance, makeException,
+  classLookup, PyRaise, toPyException, setInvoker, EXCEPTIONS, callSpecial,
+} from './objects.js';
 
 const MAX_RECURSION = 1000;
 
@@ -62,6 +66,9 @@ function analyzeScope(fnNode) {
         return;
       case 'ForOfStatement': addTarget(n.left); walk(n.right); walk(n.body); walk(n.orelse); return;
       case 'DeleteStatement': n.targets.forEach(t => (t.type === 'Identifier' ? locals.add(t.name) : walk(t))); return;
+      case 'ExceptHandler': if (n.name) locals.add(n.name); walk(n.exType); walk(n.body); return;
+      // クラスの名前はローカル。クラスの本体は別のスコープなので、基底クラスの式だけを見る
+      case 'ClassDeclaration': locals.add(n.id.name); walk(n.bases); return;
       // 内包表記は自分のスコープを持つ。外側のスコープで評価されるのは最初の iter だけ
       case 'ListComprehension': case 'SetComprehension': case 'DictComprehension': case 'GeneratorExpression':
         walk(n.generators[0].iter); return;
@@ -88,7 +95,8 @@ function lookup(name, env, loc) {
   if (scope.globals.has(name)) return lookupGlobal(name, env, loc);
   if (scope.locals.has(name)) {
     if (env.bindings.has(name)) return env.bindings.get(name);
-    throw new PyError('UnboundLocalError', `ローカル変数 '${name}' に値を入れる前に使っています`, loc);
+    // クラスの本体では、まだ代入していない名前は外側（グローバル・組み込み）を探す
+    if (env.kind !== 'class') throw new PyError('UnboundLocalError', `ローカル変数 '${name}' に値を入れる前に使っています`, loc);
   }
   for (let e = env.parent; e && e.pyScope; e = e.parent) {
     if (e.bindings.has(name)) return e.bindings.get(name);
@@ -118,7 +126,15 @@ const fl = (a, b, f) => makeFloat(f(num(a), num(b)));
 const bothInt = (a, b) => (isInt(a) || isBool(a)) && (isInt(b) || isBool(b));
 const isZero = (v) => num(v) === 0;
 
+const OP_METHODS = { '+': 'add', '-': 'sub', '*': 'mul', '/': 'truediv', '//': 'floordiv', '%': 'mod', '**': 'pow' };
+
 export function binop(op, a, b, loc) {
+  if ((isInstance(a) || isInstance(b)) && OP_METHODS[op]) {
+    const r = callSpecial(a, `__${OP_METHODS[op]}__`, [b]);
+    if (r !== undefined && r !== NOT_IMPLEMENTED) return r;
+    const rr = callSpecial(b, `__r${OP_METHODS[op]}__`, [a]);
+    if (rr !== undefined && rr !== NOT_IMPLEMENTED) return rr;
+  }
   const nums = isNum(a) && isNum(b);
   const ints = bothInt(a, b);
   switch (op) {
@@ -205,10 +221,7 @@ function compare(op, a, b, loc) {
       break;
   }
   switch (op) {
-    case '<':  return pyCmp(a, b, op, loc) < 0;
-    case '>':  return pyCmp(a, b, op, loc) > 0;
-    case '<=': return pyCmp(a, b, op, loc) <= 0;
-    case '>=': return pyCmp(a, b, op, loc) >= 0;
+    case '<': case '>': case '<=': case '>=': return richCompare(a, b, op, loc);
     case 'in':     return contains(b, a, loc);
     case 'not in': return !contains(b, a, loc);
     case 'is':     return a === b || (a == null && b == null);
@@ -307,7 +320,8 @@ function makeFunction(node, env, rt, depth, callDepth) {
     body: node.body,
     expression: !!node.expression,
     isLambda: !!node.isLambda,
-    closure: env,
+    closure: env.kind === 'class' ? env.parent : env,
+    classEnv: env.kind === 'class' ? env : null,   // クラスができたら ownerClass を決める（super() のため）
     scope: node.pyScope,
   };
 }
@@ -353,32 +367,34 @@ function bindArgs(fn, args, kwargs, env, loc) {
   return spec.map(p => vals.get(p.name));
 }
 
-export function callFunction(callee, args, kwargs, rt, depth, callDepth, loc) {
+export function callFunction(callee, args, kwargs, rt, depth, callDepth, loc, env = null) {
   if (typeof callee === 'function') {
     return callee(args, kwargs, {
-      rt, loc,
-      call: (fn, a, kw = {}) => callFunction(fn, a, kw, rt, depth, callDepth, loc),
+      rt, loc, env,
+      call: (fn, a, kw = {}) => callFunction(fn, a, kw, rt, depth, callDepth, loc, env),
     });
   }
+  if (isClass(callee)) return instantiate(callee, args, kwargs, rt, depth, callDepth, loc, env);
   if (!callee || callee.__type__ !== 'JSFunction') {
     throw new PyError('TypeError', `${typeName(callee)} は関数ではないので呼び出せません`, loc);
   }
   if (callDepth + 1 > MAX_RECURSION) {
     throw new PyError('RecursionError', `関数の呼び出しが ${MAX_RECURSION} 段を超えました（再帰が止まっていない可能性があります）`, loc);
   }
-  const env = new PyScope(callee.closure, 'function', callee.scope);
-  const vals = bindArgs(callee, args, kwargs, env, loc);
+  const fenv = new PyScope(callee.closure, 'function', callee.scope);
+  fenv.fn = callee;   // super() が、実行中の関数（定義したクラス）と self を知るため
+  const vals = bindArgs(callee, args, kwargs, fenv, loc);
   const recorder = rt.recorder;
   if (recorder) {
     // callId：呼び出しごとの番号。組み込み関数から同じ深さで続けて呼ばれる場合（sorted の key など）も区別できる
     rt.callCount = (rt.callCount ?? 0) + 1;
     recorder.pushFrame({
       name: callee.name, loc: loc || { line: 0, column: 0 }, args: vals.map(a => cloneValue(a)), callId: rt.callCount,
-    }, env);
+    }, fenv);
   }
   let result;
   try {
-    result = evaluate(callee.body, env, rt, depth, callDepth + 1);
+    result = evaluate(callee.body, fenv, rt, depth, callDepth + 1);
   } finally {
     if (recorder) recorder.popFrame();
   }
@@ -386,6 +402,61 @@ export function callFunction(callee, args, kwargs, rt, depth, callDepth, loc) {
   if (result instanceof ReturnSignal) return result.value;
   if (result instanceof ThrowSignal) return result;
   return null;
+}
+
+/**
+ * 特殊メソッド（__str__・__eq__ など）を values.js から呼べるようにする（実行の開始時に呼ぶ）。
+ * 呼び出しの深さは、記録中のコールスタックの長さ（ユーザー定義の関数の呼び出しの数）から求める。
+ */
+export function installInvoker(rt) {
+  setInvoker((fn, args) => {
+    const rec = rt.recorder;
+    const callDepth = rec ? rec.callStack.length : 0;
+    const last = rec?.trace[rec.trace.length - 1];
+    const depth = last ? last.depth + 1 : 0;
+    const r = callFunction(fn, args, {}, rt, depth, callDepth, last?.loc);
+    if (r instanceof ThrowSignal) throw r.value;
+    return r;
+  });
+}
+
+/** クラスを呼んでインスタンスを作る（__init__ があれば呼ぶ） */
+function instantiate(cls, args, kwargs, rt, depth, callDepth, loc, env) {
+  const inst = isExceptionClass(cls) ? makeException(cls, args) : makeInstance(cls);
+  const init = classLookup(cls, '__init__');
+  if (init !== undefined) {
+    const r = callFunction(init, [inst, ...args], kwargs, rt, depth, callDepth, loc, env);
+    if (r !== null && r !== undefined) throw new PyError('TypeError', '__init__() は None を返さなければなりません', loc);
+  } else if (args.length || Object.keys(kwargs).length) {
+    throw new PyError('TypeError', `${cls.name}() は引数を受け取りません`, loc);
+  }
+  return inst;
+}
+
+/** 例外を送出する（JS の例外 PyRaise として投げる） */
+function raise(exc, loc) {
+  const text = str(exc);
+  throw new PyRaise(exc, loc, `${exc.cls.name}${text ? `: ${text}` : ''}${loc ? `（${loc.line}行目）` : ''}`);
+}
+
+/**
+ * try の本体で例外が起きたあと、トレースを整える（JSInterpreter の _trimFailedTryBlock と同じ方式）。
+ * 例外で中断した評価は exit を持たない enter（matchIdx === -1）を残すので、
+ * ① 末尾の、完了した子を持たない enter を除き、② 残った enter の matchIdx を except の先頭（trace.length）にする。
+ */
+function trimFailedTry(trace, start) {
+  if (trace.length <= start) return;
+  let tail = trace.length - 1;
+  while (tail >= start && trace[tail].matchIdx === -1) tail--;
+  trace.length = tail + 1;
+  for (let j = start; j < trace.length; j++) if (trace[j].matchIdx === -1) trace[j].matchIdx = trace.length;
+}
+
+/** except 節の型に例外が当てはまるか（型は例外のクラスか、そのタプル） */
+function exceptMatches(t, exc, loc) {
+  if (isTuple(t)) return t.some(x => exceptMatches(x, exc, loc));
+  if (!isExceptionClass(t)) throw new PyError('TypeError', 'except の後ろには例外のクラスを書きます', loc);
+  return exc.cls.mro.includes(t);
 }
 
 // ── 代入 ──────────────────────────────────────────────────────────────────────
@@ -410,7 +481,10 @@ function assignTarget(target, value, env, rt, d, callDepth) {
       return;
     }
     case 'MemberExpression': {
-      if (!target.computed) throw new PyError('NotImplemented', '属性への代入（obj.x = ...）はまだ対応していません', target.loc);
+      if (!target.computed) {
+        setAttr(evaluate(target.object, env, rt, d, callDepth), target.property.name, value, target.loc);
+        return;
+      }
       if (target.property.type === 'SliceExpression') {
         const obj = evaluate(target.object, env, rt, d, callDepth);
         const p = target.property;
@@ -453,7 +527,7 @@ function deleteTarget(t, env, rt, d, callDepth) {
     return;
   }
   const obj = evaluate(t.object, env, rt, d, callDepth);
-  if (!t.computed) throw new PyError('NotImplemented', '属性の del はまだ対応していません', t.loc);
+  if (!t.computed) { delAttr(obj, t.property.name, t.loc); return; }
   if (t.property.type === 'SliceExpression') {
     if (!isList(obj)) throw new PyError('TypeError', `${typeName(obj)} の要素は消せません`, t.loc);
     const p = t.property;
@@ -534,6 +608,89 @@ function _eval(node, env, rt, depth, callDepth) {
     case 'DeleteStatement':
       for (const t of node.targets) deleteTarget(t, env, rt, d, callDepth);
       return undefined;
+
+    case 'ClassDeclaration': {
+      const bases = node.bases.map(b => {
+        const v = ev(b);
+        if (!isClass(v)) throw new PyError('TypeError', `基底クラスには クラスを書きます（${typeName(v)} が書かれています）`, b.loc);
+        return v;
+      });
+      // クラスの本体は自分のスコープで実行し、そこで作った名前がクラスの属性になる
+      if (!node.pyScope) {
+        const sc = analyzeScope({ params: [], body: node.body });
+        node.pyScope = sc;
+      }
+      const cenv = new PyScope(env, 'class', node.pyScope);
+      const r = ev(node.body, cenv);
+      if (isSignal(r)) return r;
+      const cls = new PyClass(node.id.name, bases.length ? bases : [ObjectClass], Object.fromEntries(cenv.bindings));
+      for (const v of cenv.bindings.values()) if (v && v.__type__ === 'JSFunction' && v.classEnv === cenv) v.ownerClass = cls;
+      assignName(node.id.name, cls, env, node.loc);
+      return undefined;
+    }
+
+    case 'TryStatement': {
+      const rec = rt.recorder;
+      const traceStart = rec ? rec.trace.length : 0;
+      const savedCurEnv = rec?.curEnv;
+      let result;
+      let pending = null;   // finally のあとで投げ直す例外
+      try {
+        const r = ev(node.block);
+        if (isSignal(r)) result = r;
+        else if (node.orelse) { const r2 = ev(node.orelse); if (isSignal(r2)) result = r2; }
+      } catch (err) {
+        const exc = toPyException(err);
+        if (!exc) throw err;   // 上限超過・未対応の構文などは except で捕まえない
+        if (rec) { trimFailedTry(rec.trace, traceStart); rec.curEnv = savedCurEnv; }
+        pending = err;
+        for (const h of node.handlers) {
+          if (h.exType && !exceptMatches(ev(h.exType), exc, h.loc)) continue;
+          pending = null;
+          // 捕まえた時点（except の行）を ExceptBinding として記録する（「人」のステップが止まる）
+          const binding = { type: 'ExceptBinding', loc: h.head.loc, end: h.head.end };
+          const bind = () => { if (h.name) assignName(h.name, exc, env, h.loc); return exc; };
+          if (rec) rec.record(binding, env, d, callDepth, bind); else bind();
+          rt.excStack = [...(rt.excStack ?? []), exc];
+          try {
+            const r = ev(h.body);
+            if (isSignal(r)) result = r;
+          } catch (err2) {
+            pending = err2;
+          } finally {
+            rt.excStack.pop();
+            if (h.name) env.bindings.delete(h.name);   // Python は except の後で as の名前を消す
+          }
+          break;
+        }
+      }
+      if (node.finalizer) {
+        const rf = ev(node.finalizer);
+        if (isSignal(rf)) return rf;   // finally の return / break は、例外や前の return より優先する
+      }
+      if (pending) throw pending;
+      return result;
+    }
+
+    case 'RaiseStatement': {
+      if (!node.exc) {
+        const top = rt.excStack?.[rt.excStack.length - 1];
+        if (!top) throw new PyError('RuntimeError', '投げ直す例外がありません（raise だけの文は except の中で使います）', node.loc);
+        raise(top, node.loc);
+      }
+      let v = ev(node.exc);
+      if (isExceptionClass(v)) v = instantiate(v, [], {}, rt, d, callDepth, node.loc, env);
+      if (!isException(v)) throw new PyError('TypeError', `raise できるのは例外だけです（${typeName(v)}）`, node.loc);
+      if (node.cause) ev(node.cause);
+      raise(v, node.loc);
+      return undefined;
+    }
+
+    case 'AssertStatement':
+      if (!truthy(ev(node.test))) {
+        raise(makeException(EXCEPTIONS.AssertionError, node.msg ? [ev(node.msg)] : []), node.loc);
+      }
+      return undefined;
     case 'BreakStatement':      return new BreakSignal();
     case 'ContinueStatement':   return new ContinueSignal();
     case 'ReturnStatement':     return new ReturnSignal(node.argument ? ev(node.argument) : null);
@@ -601,6 +758,13 @@ function _eval(node, env, rt, depth, callDepth) {
         const cur = getItem(obj, key, t.loc);
         const value = binop(op, cur, ev(node.right), node.loc);
         setItem(obj, key, value, t.loc);
+        return value;
+      }
+      if (t.type === 'MemberExpression' && !t.computed) {   // self.count += 1
+        const obj = ev(t.object);
+        const cur = getAttr(obj, t.property.name, t.loc);
+        const value = op === '+' && isList(cur) ? (cur.push(...iterate(ev(node.right), node.loc)), cur) : binop(op, cur, ev(node.right), node.loc);
+        setAttr(obj, t.property.name, value, t.loc);
         return value;
       }
       throw new PyError('NotImplemented', 'この形の複合代入はまだ対応していません', node.loc);
@@ -675,7 +839,7 @@ function _eval(node, env, rt, depth, callDepth) {
           }
         } else args.push(ev(a));
       }
-      return callFunction(callee, args, kwargs, rt, d, callDepth, node.loc);
+      return callFunction(callee, args, kwargs, rt, d, callDepth, node.loc, env);
     }
     case 'MemberExpression': {
       const obj = ev(node.object);

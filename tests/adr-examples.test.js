@@ -104,3 +104,39 @@ test('ADR-005 例2：集合は入れた順に表示される（CPython の表示
 test('ADR-005 例3：ジェネレーター式は、その場で全部計算したリストになる', () => {
   assert.deepEqual(output('g = (x * 2 for x in range(3))\nprint(g, sum(x for x in [1, 2, 3]))\n'), ['[0, 2, 4] 6']);
 });
+
+// ── ADR-006：クラスと例外 ─────────────────────────────────────────────
+
+test('ADR-006 例1：PyVisualizer が出す例外のメッセージは日本語の説明になる（型の名前は CPython と同じ）', () => {
+  assert.deepEqual(output('try:\n    int("x")\nexcept ValueError as e:\n    print(type(e).__name__, e)\n'),
+    ["ValueError 'x' は整数に変換できません"]);
+});
+
+test('ADR-006 例2：raise で投げた例外のメッセージは、書いたとおりに出る', () => {
+  assert.deepEqual(output('try:\n    raise ValueError("no scores")\nexcept ValueError as e:\n    print("error:", e, e.args)\n'),
+    ["error: no scores ('no scores',)"]);
+});
+
+test('ADR-006 例3：例外を捕まえたとき、「人」のステップは except の行で止まり、e がその例外になる', () => {
+  const dbg = new PyDebugger('try:\n    x = 1 // 0\nexcept ZeroDivisionError as e:\n    x = -1\n');
+  const stops = [];
+  while (!dbg.humanStep().done) {
+    const ev = dbg.getCurrentEvent();
+    stops.push(`${ev.loc.line}:${ev.nodeType}${ev.env[0].e ? `(e=${ev.env[0].e.cls.name})` : ''}`);
+  }
+  assert.deepEqual(stops, ['2:ExpressionStatement', '3:ExceptBinding(e=ZeroDivisionError)', '4:AssignmentExpression(e=ZeroDivisionError)']);
+});
+
+test('ADR-006 例4：__str__ も __repr__ もないインスタンスの表示には、アドレスを付けない', () => {
+  assert.deepEqual(output('class Dog:\n    pass\nprint(Dog())\n'), ['<__main__.Dog object>']);
+});
+
+test('ADR-006 例5：インスタンスは、画面ではクラス名と属性で表示される', () => {
+  const dbg = new PyDebugger('class Dog:\n    def __init__(self, name):\n        self.name = name\nd = Dog("Rex")\n');
+  const d = dbg.trace[dbg.trace.length - 1].env[0].d;
+  const m = createPythonProfile({}).valueModel;
+  assert.equal(m.kind(d), 'object');
+  assert.equal(m.label(d), 'Dog');
+  assert.deepEqual(m.entries(d), [['name', 'Rex']]);
+  assert.equal(formatValue(d).replace(/<[^>]+>/g, ''), "{ name: 'Rex' }");
+});

@@ -140,3 +140,35 @@ test('ADR-006 例5：インスタンスは、画面ではクラス名と属性�
   assert.deepEqual(m.entries(d), [['name', 'Rex']]);
   assert.equal(formatValue(d).replace(/<[^>]+>/g, ''), "{ name: 'Rex' }");
 });
+
+// ── ADR-007：import math と input() ─────────────────────────────────────────────
+import { DebuggerAdapter } from 'js-visualizer/src/core/debugger-adapter.js';
+
+/** フロントエンドの DebuggerAdapter で、入力欄の内容を渡して実行し、最後の時点のコンソールの表示を返す */
+const consoleWith = (src, stdin) => {
+  const adapter = new DebuggerAdapter();
+  let error = null;
+  adapter.addEventListener('error', (e) => { error = e.detail.message; });
+  adapter.load(src, { stdin });
+  adapter.moveTo(adapter.getTrace().length);
+  return { lines: adapter.getState().consoleOutput.map(l => l.text), error };
+};
+
+test('ADR-007 例1：input() は入力欄の行を読み、プロンプトの後に読んだ行が表示される', () => {
+  const { lines } = consoleWith('name = input("名前: ")\nage = int(input("年齢: "))\nprint(name, age + 1)\n', '太郎\n20\n');
+  assert.deepEqual(lines, ['名前: 太郎', '年齢: 20', '太郎 21']);
+});
+
+test('ADR-007 例2：入力欄の行が足りないと EOFError になり、入力欄に書くよう案内する', () => {
+  const { lines, error } = consoleWith('a = input("1つ目: ")\nb = input("2つ目: ")\n', 'x');
+  assert.deepEqual(lines, ['1つ目: x', '2つ目: ']);
+  assert.match(error, /^EOFError: 入力が足りません（画面の「入力」の欄に/);
+});
+
+test('ADR-007 例3：import できるのは math だけで、ほかのモジュールは ModuleNotFoundError になる', () => {
+  assert.deepEqual(output('import math\nfrom math import sqrt\nprint(math.floor(2.5), sqrt(2) ** 2 > 1.99)\n'), ['2 True']);
+  assert.throws(() => new PyDebugger('import random\n'), (e) => {
+    assert.match(e.message, /^ModuleNotFoundError: モジュール 'random' は使えません（PyVisualizer で import できるのは math だけです）/);
+    return true;
+  });
+});

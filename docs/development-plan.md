@@ -124,7 +124,7 @@ Python のコードを JS の AST に変換して JSInterpreter の評価器で�
 | **2. Python エンジン MVP**（PyVisualizer）✅ 2026-11-25 完了 | 4.1 節の範囲を実装。辞書を `PyDict` に作り直し（キーの型と挿入順）、大きな整数（BigInt）、連続代入。行単位の変数の状態を CPython と比べるテストを追加 | `src/engine/`、[phase2-report.md](phase2-report.md)、ADR-002・003 | CPython との比較（出力 31 件・変数の状態 23 件）を含む 95 件がすべて通る |
 | **3. フロントエンドの言語非依存化**（JSVisualizer）✅ 2026-11-25 完了 | 言語プロファイル（エンジン・エディタ・サンプル・色分け・実行トレースの行・値の見せ方 `valueModel`）を入れ、コンソールが出力の断片を行にまとめるようにした。PyVisualizer は Python のプロファイルを登録して動く（停止点の統一はしなかった。理由は [phase3-report.md](phase3-report.md) 2.3 節） | JSVisualizer の作業ブランチ `feature/multilang`（worktree `../JSVisualizer-multilang`、JSVisualizer の ADR-055）、PyVisualizer の ADR-004、[phase3-report.md](phase3-report.md) | JS 版の画面の HTML が main と一致（`scripts/capture-js-dom.mjs`）、JSVisualizer のテスト 213 件・PyVisualizer のテスト 104 件が通る |
 | **4. PyVisualizer アプリ**（公開以外は ✅ 2026-11-25） | サンプル 23 本（`samples/samples.json` で表示名・分類）、全サンプル × 全タブの確認、Python 版のマニュアル（日本語・英語）、GitHub Pages のワークフロー（手動実行のみ。公開は判断待ち） | [phase4-report.md](phase4-report.md) | 全サンプル × 全タブでブラウザのエラー 0 件、テスト 122 件が通る。公開は未実施 |
-| **5. Python の対象拡大** | class/`self`、try/except/else/finally、内包表記、dict/set のメソッド、f 文字列、スライス、キーワード引数・`*args`、`input()`（入力をあらかじめ与える方式） | | 授業の演習で使う範囲をカバーする |
+| **5. Python の対象拡大** ✅ 2026-11-25 完了 | 基本の拡張（内包表記・set・del・スライスへの代入・ループの else・% 書式・*args/**kwargs）、例外（try/except/else/finally・raise・assert）、class（継承・super()・特殊メソッド）、import math と input()（画面の入力欄）。ジェネレーターは対象外 | [phase5-report.md](phase5-report.md)、ADR-005〜007 | CPython との比較（出力 58 件・変数の状態 37 件）を含む 166 件がすべて通る |
 | **6. BhvVisualizer 連携** | 2.5 節の変更 | | 既存の e2e（exercise-flow・viewer-host・analysis-dashboard）＋ Python のコードを使う e2e が通る |
 | 7.（将来）Java / C++ | 同じ手順でエンジンを追加 | | |
 

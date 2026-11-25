@@ -86,6 +86,14 @@ def main():
             last_line[id(frame)] = frame.f_lineno
         return tracer
 
+    # input() は、端末と同じく読んだ行を表示する形にする（tools/run_echo.py と同じ。ADR-007）
+    def echo_input(prompt=''):
+        sys.stdout.write(str(prompt))
+        line = sys.stdin.readline()
+        if not line:
+            raise EOFError('EOF when reading a line')
+        return line.rstrip('\n')
+    builtins.input = echo_input
     g = {'__name__': '__main__', '__builtins__': builtins}
     error = None
     out, sys.stdout = sys.stdout, io.StringIO()   # プログラムの print は JSON と混ぜない

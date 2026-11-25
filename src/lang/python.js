@@ -88,6 +88,7 @@ export const createPythonProfile = (samples, { groups, defaultSample } = {}) => 
   Debugger: PyDebugger,
   ExecutionError,
   editorExtension: () => python(),
+  supportsInput: true,   // 入力欄を出し、実行時に { stdin } を渡す（input()。ADR-007）
   samples,
   sampleGroups: groups ?? [{ label: '─ Samples ─', keys: Object.keys(samples) }],
   defaultSample: defaultSample ?? Object.keys(samples)[0],

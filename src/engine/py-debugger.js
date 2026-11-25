@@ -36,11 +36,16 @@ export const PY_NODE_CATEGORIES = Object.freeze({
  * @returns {{ ast, trace, consoleLogs }}
  * @throws {PySyntaxError|ExecutionError}
  */
-export function runPython(source, { maxSteps = 100_000 } = {}) {
+/**
+ * @param {string} source
+ * @param {{ maxSteps?: number, stdin?: string }} [options] stdin：input() で読む内容（改行区切り）
+ */
+export function runPython(source, { maxSteps = 100_000, stdin = '' } = {}) {
   const ast = parse(source);
   const recorder = createRecorder(maxSteps);
   const env = new PyScope(null, 'global');
-  const rt = { recorder };
+  // 末尾の改行は空の行として数えない（入力欄の最後で改行しても、余分な行にしない）
+  const rt = { recorder, stdin: stdin === '' ? [] : stdin.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n') };
   installInvoker(rt);
   try {
     evaluate(ast, env, rt, 0, 0);
@@ -64,7 +69,7 @@ export class PyDebugger extends TraceDebugger {
    */
   constructor(source, options = {}) {
     const maxSteps = options.maxSteps ?? 100_000;
-    const { ast, trace, consoleLogs } = runPython(source, { maxSteps });
+    const { ast, trace, consoleLogs } = runPython(source, { maxSteps, stdin: options.stdin ?? '' });
     super({ source, trace, ast, consoleLogs, maxSteps });
   }
 }

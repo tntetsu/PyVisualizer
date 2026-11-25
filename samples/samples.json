@@ -78,6 +78,10 @@
         [
           "16_big_factorial",
           "Big integers (factorial)"
+        ],
+        [
+          "27_math",
+          "math module"
         ]
       ]
     },

@@ -19,6 +19,7 @@ import {
   PyClass, ObjectClass, isClass, isInstance, isExceptionClass, isException, makeInstance, makeException,
   classLookup, PyRaise, toPyException, setInvoker, EXCEPTIONS, callSpecial,
 } from './objects.js';
+import { importModule } from './modules.js';
 
 const MAX_RECURSION = 1000;
 
@@ -67,6 +68,8 @@ function analyzeScope(fnNode) {
       case 'ForOfStatement': addTarget(n.left); walk(n.right); walk(n.body); walk(n.orelse); return;
       case 'DeleteStatement': n.targets.forEach(t => (t.type === 'Identifier' ? locals.add(t.name) : walk(t))); return;
       case 'ExceptHandler': if (n.name) locals.add(n.name); walk(n.exType); walk(n.body); return;
+      case 'ImportStatement': n.names.forEach(x => locals.add(x.alias ?? x.name)); return;
+      case 'ImportFromStatement': n.names.forEach(x => locals.add(x.alias ?? x.name)); return;
       // クラスの名前はローカル。クラスの本体は別のスコープなので、基底クラスの式だけを見る
       case 'ClassDeclaration': locals.add(n.id.name); walk(n.bases); return;
       // 内包表記は自分のスコープを持つ。外側のスコープで評価されるのは最初の iter だけ
@@ -683,6 +686,24 @@ function _eval(node, env, rt, depth, callDepth) {
       if (!isException(v)) throw new PyError('TypeError', `raise できるのは例外だけです（${typeName(v)}）`, node.loc);
       if (node.cause) ev(node.cause);
       raise(v, node.loc);
+      return undefined;
+    }
+
+    case 'ImportStatement':
+      for (const { name, alias } of node.names) assignName(alias ?? name, importModule(name, node.loc), env, node.loc);
+      return undefined;
+    case 'ImportFromStatement': {
+      const m = importModule(node.module, node.loc);
+      if (node.star) {
+        for (const [k, v] of Object.entries(m.attrs)) assignName(k, v, env, node.loc);
+        return undefined;
+      }
+      for (const { name, alias } of node.names) {
+        if (!Object.prototype.hasOwnProperty.call(m.attrs, name)) {
+          throw new PyError('ImportError', `モジュール '${node.module}' に ${name} はありません`, node.loc);
+        }
+        assignName(alias ?? name, m.attrs[name], env, node.loc);
+      }
       return undefined;
     }
 

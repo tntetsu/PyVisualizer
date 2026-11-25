@@ -400,7 +400,24 @@ export function parse(src) {
         return [mk('TryStatement', n.from, last.range[1], { block: block_, handlers, orelse, finalizer })];
       }
       case 'WithStatement':     return unsupported('with 文', n);
-      case 'ImportStatement':   return unsupported('import', n);
+      case 'ImportStatement': {
+        // import a [as b], ... / from a import x [as y], ... / from a import *
+        const isFrom = isTok(c[0], 'from');
+        const importIdx = c.findIndex(k => isTok(k, 'import'));
+        const parseNames = (nodes) => splitBy(nodes, [',']).filter(g => g.length).map(g => {
+          if (g.some(k => isTok(k, '.'))) unsupported('ドットを含むモジュール名', g[0]);
+          return { name: text(g[0]), alias: g.length === 3 && isTok(g[1], 'as') ? text(g[2]) : null };
+        });
+        if (!isFrom) return [mk('ImportStatement', n.from, n.to, { names: parseNames(c.slice(1)) })];
+        const moduleNodes = c.slice(1, importIdx);
+        if (moduleNodes.length !== 1) unsupported('この形の from … import', n);
+        const rest = c.slice(importIdx + 1).filter(k => !isTok(k, '(', ')'));
+        return [mk('ImportFromStatement', n.from, n.to, {
+          module: text(moduleNodes[0]),
+          star: rest.length === 1 && isTok(rest[0], '*'),
+          names: rest.length === 1 && isTok(rest[0], '*') ? [] : parseNames(rest),
+        })];
+      }
       case 'RaiseStatement': {
         const fromIdx = c.findIndex(k => isTok(k, 'from'));
         const excNodes = c.slice(1, fromIdx >= 0 ? fromIdx : c.length);

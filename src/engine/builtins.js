@@ -14,6 +14,7 @@ import {
 import {
   ObjectClass, EXCEPTIONS, isClass, isInstance, classLookup, callSpecial,
 } from './objects.js';
+import { isModule } from './modules.js';
 
 const def = (name, fn) => { fn.pyName = name; return fn; };
 /** 組み込みの型（int・str など）。isinstance の型に使え、repr は <class 'int'> */
@@ -336,8 +337,18 @@ export const BUILTINS = {
     }
   }),
   setattr: def('setattr', (args, _k, ctx) => { setAttr(args[0], args[1], args[2], ctx.loc); return null; }),
-  input: def('input', (_a, _k, ctx) => {
-    throw new PyError('NotImplemented', 'input() はまだ対応していません（入力をあらかじめ与える方式を Phase 5 で検討）', ctx.loc);
+  // input()：画面の入力欄に書いた行を 1 行ずつ読む（ADR-007）。端末と同じく、プロンプトの後に読んだ行を表示する
+  input: def('input', (args, _k, ctx) => {
+    const rt = ctx.rt;
+    if (args.length) rt.recorder?.write(str(args[0]));
+    const lines = rt.stdin ?? [];
+    rt.stdinPos = rt.stdinPos ?? 0;
+    if (rt.stdinPos >= lines.length) {
+      throw new PyError('EOFError', '入力が足りません（画面の「入力」の欄に、input() で読む行を書いてください）', ctx.loc);
+    }
+    const line = lines[rt.stdinPos++];
+    rt.recorder?.write(`${line}\n`);
+    return line;
   }),
 };
 
@@ -476,6 +487,10 @@ export function delAttr(obj, name, loc) {
 
 /** obj.name を取り出す。メソッドは、呼び出し可能な JS 関数（self を束縛したもの）を返す */
 export function getAttr(obj, name, loc) {
+  if (isModule(obj)) {
+    if (Object.prototype.hasOwnProperty.call(obj.attrs, name)) return obj.attrs[name];
+    throw new PyError('AttributeError', `モジュール '${obj.name}' に ${name} はありません`, loc);
+  }
   if (isInstance(obj)) {
     if (Object.prototype.hasOwnProperty.call(obj.attrs, name)) return obj.attrs[name];
     if (name === 'args' && obj.args) return obj.args;

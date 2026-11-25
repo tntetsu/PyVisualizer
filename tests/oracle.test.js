@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { runPython } from '../src/engine/py-debugger.js';
 import { joinConsoleLines } from 'js-interpreter/core';
@@ -18,9 +18,15 @@ const files = [
   ...readdirSync(join(ROOT, 'tests/cases')).map(f => join(ROOT, 'tests/cases', f)),
 ].filter(f => f.endsWith('.py'));
 
+/** input() で読む行（program.py と同じ名前の program.stdin があれば、その内容） */
+const stdinOf = (file) => (existsSync(file.replace(/\.py$/, '.stdin')) ? readFileSync(file.replace(/\.py$/, '.stdin'), 'utf8') : '');
+
 function runCPython(file) {
+  const stdin = stdinOf(file);
   try {
-    return { out: execFileSync('python3', ['-I', file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), errType: null };
+    // input() は端末と同じく読んだ行を表示する形にそろえる（tools/run_echo.py）
+    const args = stdin ? ['-I', join(ROOT, 'tests/tools/run_echo.py'), file] : ['-I', file];
+    return { out: execFileSync('python3', args, { encoding: 'utf8', input: stdin, stdio: ['pipe', 'pipe', 'pipe'] }), errType: null };
   } catch (e) {
     const last = e.stderr.trim().split('\n').pop();
     return { out: e.stdout, errType: last.split(':')[0] };
@@ -30,7 +36,7 @@ function runCPython(file) {
 function runPy(file) {
   const src = readFileSync(file, 'utf8');
   try {
-    const { consoleLogs } = runPython(src, { maxSteps: 2_000_000 });
+    const { consoleLogs } = runPython(src, { maxSteps: 2_000_000, stdin: stdinOf(file) });
     return { out: joinConsoleLines(consoleLogs).map(l => l.text + '\n').join(''), errType: null };
   } catch (e) {
     const logs = joinConsoleLines(e.partialConsoleLogs ?? []);

@@ -162,6 +162,7 @@
           <tr><td>上部</td><td>「編集」「実行」ボタン、サンプル選択（編集モードのとき）、ステップ実行のボタンとスライダー（実行モードのとき）。右端に使い方（<strong>?</strong>）・表示言語（<strong>EN</strong> ／ <strong>日</strong>）・設定（<strong>⚙</strong>）のボタン</td></tr>
           <tr><td>左側（ソース）</td><td>コード。編集モードでは書き換えられ、実行モードでは今どこを実行しているかがハイライトされます</td></tr>
           <tr><td>右側</td><td>可視化ビュー。上のタブで表示を切り替えます。タブの下に、そのビューの説明が1行表示されます</td></tr>
+          <tr><td>左側の下（入力）</td><td><code>input()</code> で読む行を、あらかじめ書いておく欄です（<a href="#input">input() を使うとき</a>）</td></tr>
           <tr><td>右側の下（コンソール）</td><td><code>print()</code> で出力した内容が表示されます。どのビューを見ているときも表示されています</td></tr>
         </tbody>
       </table>
@@ -174,7 +175,7 @@
       <p>開いた直後は、サンプルのコード（フィボナッチ数列）が入っています。</p>
 
       <h3>サンプルから選ぶ</h3>
-      <p>編集モードのとき、画面上部の<strong>サンプル選択</strong>（プルダウン）から、23種類のサンプルコードを選べます。</p>
+      <p>編集モードのとき、画面上部の<strong>サンプル選択</strong>（プルダウン）から、27種類のサンプルコードを選べます。</p>
       <figure>
         <img src="manual/ja/screen-edit.png" alt="編集モードの画面。上部に編集・実行ボタンとサンプル選択、左にバブルソートのコード" width="1280" height="800" loading="lazy" />
         <figcaption>編集モード（サンプル「Bubble Sort」を選んだところ）</figcaption>
@@ -186,9 +187,10 @@
           <tr><td>ソート（基本）</td><td>バブルソート、選択ソート</td></tr>
           <tr><td>ソート（高度）</td><td>クイックソート、マージソート</td></tr>
           <tr><td>ソート（辞書）</td><td>数値のキーでソート、文字列のキーでソート</td></tr>
-          <tr><td>数学・アルゴリズム</td><td>ユークリッドの互除法（ループ／再帰）、階乗、フィボナッチ数列（再帰／動的計画法）、大きな整数（階乗）</td></tr>
+          <tr><td>数学・アルゴリズム</td><td>ユークリッドの互除法（ループ／再帰）、階乗、フィボナッチ数列（再帰／動的計画法）、大きな整数（階乗）、<code>math</code> モジュール</td></tr>
           <tr><td>データ構造</td><td>二分木・連結リスト（辞書で作ったもの）、単語の数え上げ（辞書）</td></tr>
-          <tr><td>スコープ・Python</td><td>クロージャ（<code>nonlocal</code>）、Python の機能（f 文字列・スライスなど）</td></tr>
+          <tr><td>スコープ・Python</td><td>クロージャ（<code>nonlocal</code>）、Python の機能（f 文字列・スライスなど）、内包表記、例外（<code>try</code>／<code>except</code>）</td></tr>
+          <tr><td>クラス</td><td>クラスと継承</td></tr>
           <tr><td>Study Tasks</td><td>練習用の課題（バグ探し・呼び出し回数・途中状態のトレースなど）</td></tr>
         </tbody>
       </table>
@@ -196,21 +198,38 @@
       <h3>自分でコードを書く</h3>
       <p>編集モードでは、左側のコードを自由に書き換えられます。ほかの場所で書いたコードを貼り付けても構いません。書き終えたら「▶ 実行」を押します。</p>
       <ul>
-        <li>結果の確認には <code>print()</code> を使ってください。出力はコンソールに表示されます。<code>input()</code> による入力やファイルの読み書きはできません。</li>
+        <li>結果の確認には <code>print()</code> を使ってください。出力はコンソールに表示されます。<code>input()</code> で読む行は、画面の「入力」の欄にあらかじめ書いておきます（<a href="#input">input() を使うとき</a>）。ファイルの読み書きはできません。</li>
         <li>書き換えたコードは保存されません。ページを再読み込みすると元に戻るので、残したいコードは別の場所に控えておいてください。</li>
       </ul>
       <p>使える Python の範囲は次のとおりです。</p>
       <table>
         <thead><tr><th></th><th>内容</th></tr></thead>
         <tbody>
-          <tr><td>値</td><td>整数（大きな整数も正確に計算できます）、小数、文字列、<code>True</code>／<code>False</code>、<code>None</code>、リスト、タプル、辞書、<code>range</code></td></tr>
-          <tr><td>文</td><td>代入（<code>a, b = b, a</code> のようなアンパック、<code>+=</code> など、<code>a = b = 0</code>）、<code>if</code>／<code>elif</code>／<code>else</code>、<code>while</code>、<code>for</code>、<code>break</code>／<code>continue</code>、<code>def</code>／<code>return</code>（デフォルト引数・キーワード引数）、<code>pass</code>、<code>global</code>／<code>nonlocal</code></td></tr>
-          <tr><td>式</td><td>算術（<code>//</code>・<code>%</code>・<code>**</code> も Python と同じ意味）、<code>1 &lt; x &lt; 10</code> のような比較の連鎖、<code>and</code>／<code>or</code>／<code>not</code>、<code>in</code>、<code>is</code>、負の添字、スライス、条件式、<code>lambda</code>、f 文字列</td></tr>
-          <tr><td>組み込み関数</td><td><code>print</code>、<code>len</code>、<code>range</code>、<code>abs</code>、<code>min</code>、<code>max</code>、<code>sum</code>、<code>sorted</code>、<code>reversed</code>、<code>enumerate</code>、<code>zip</code>、<code>str</code>、<code>int</code>、<code>float</code>、<code>bool</code>、<code>list</code>、<code>tuple</code>、<code>dict</code>、<code>repr</code>、<code>round</code>、<code>chr</code>、<code>ord</code>、リスト・文字列・辞書の主なメソッド</td></tr>
-          <tr><td>まだ使えないもの</td><td><code>class</code>、<code>try</code>／<code>except</code>、内包表記、集合（<code>set</code>）、<code>*args</code>／<code>**kwargs</code>、<code>import</code>、<code>input()</code>、ジェネレーター（<code>yield</code>）、文字列の <code>%</code> 書式。使うと「〜はまだ対応していません」という構文エラーになります</td></tr>
+          <tr><td>値</td><td>整数（大きな整数も正確に計算できます）、小数、文字列、<code>True</code>／<code>False</code>、<code>None</code>、リスト、タプル、辞書、集合（<code>set</code>）、<code>range</code></td></tr>
+          <tr><td>文</td><td>代入（<code>a, b = b, a</code> のようなアンパック、<code>+=</code> など、<code>a = b = 0</code>、スライスへの代入）、<code>del</code>、<code>if</code>／<code>elif</code>／<code>else</code>、<code>while</code>、<code>for</code>（どちらも <code>else</code> を付けられます）、<code>break</code>／<code>continue</code>、<code>def</code>／<code>return</code>、<code>pass</code>、<code>global</code>／<code>nonlocal</code>、<code>class</code>、<code>try</code>／<code>except</code>／<code>else</code>／<code>finally</code>、<code>raise</code>、<code>assert</code>、<code>import math</code>／<code>from math import …</code></td></tr>
+          <tr><td>式</td><td>算術（<code>//</code>・<code>%</code>・<code>**</code> も Python と同じ意味）、<code>1 &lt; x &lt; 10</code> のような比較の連鎖、<code>and</code>／<code>or</code>／<code>not</code>、<code>in</code>、<code>is</code>、負の添字、スライス、条件式、<code>lambda</code>、f 文字列、文字列の <code>%</code> 書式、内包表記（リスト・辞書・集合）、ジェネレーター式</td></tr>
+          <tr><td>関数の引数</td><td>デフォルト引数、キーワード引数、<code>*args</code>／<code>**kwargs</code>、キーワード専用引数、呼び出しでの <code>f(*xs, **d)</code></td></tr>
+          <tr><td>クラス</td><td><code>__init__</code>、メソッド、属性、継承、<code>super()</code>、特殊メソッド（<code>__str__</code>・<code>__repr__</code>・<code>__eq__</code>・<code>__lt__</code>・<code>__len__</code>・<code>__add__</code> など）、ユーザー定義の例外</td></tr>
+          <tr><td>組み込み関数</td><td><code>print</code>、<code>input</code>、<code>len</code>、<code>range</code>、<code>abs</code>、<code>min</code>、<code>max</code>、<code>sum</code>、<code>sorted</code>、<code>reversed</code>、<code>enumerate</code>、<code>zip</code>、<code>str</code>、<code>int</code>、<code>float</code>、<code>bool</code>、<code>list</code>、<code>tuple</code>、<code>dict</code>、<code>set</code>、<code>repr</code>、<code>round</code>、<code>chr</code>、<code>ord</code>、<code>isinstance</code>、<code>issubclass</code>、<code>type</code>、<code>hasattr</code>、<code>getattr</code>、<code>setattr</code>、リスト・文字列・辞書・集合の主なメソッド</td></tr>
+          <tr><td>まだ使えないもの</td><td>ジェネレーター（<code>yield</code>）、<code>with</code>、デコレーター（<code>@classmethod</code> など）、<code>async</code>、<code>match</code>、<code>math</code> 以外のモジュール。使うと「〜はまだ対応していません」という構文エラー（モジュールは <code>ModuleNotFoundError</code>）になります</td></tr>
         </tbody>
       </table>
+      <p>Python 本体（CPython）と表示が違うところがあります。</p>
+      <ul>
+        <li>PyVisualizer が出す例外のメッセージ（<code>int("x")</code> の <code>ValueError</code> など）は、初学者向けの日本語の説明です。例外の型の名前は同じです。<code>raise</code> で投げた例外のメッセージは、書いたとおりに出ます</li>
+        <li>集合は、入れた順に表示されます（Python 本体では、ハッシュ値で決まる順になります）</li>
+        <li>ジェネレーター式（<code>(x for x in xs)</code>）は、その場で全部計算したリストになります。<code>sum(x for x in xs)</code> のような使い方では、結果は同じです</li>
+        <li>インスタンスを <code>print</code> したときの <code>&lt;__main__.Dog object&gt;</code> には、アドレスが付きません</li>
+      </ul>
       <p>関数の呼び出しは、深さがおよそ 290 段を超えると止まります（Python 本体の上限は 1000 段）。</p>
+
+      <h3 id="input">input() を使うとき</h3>
+      <p>PyVisualizer は、プログラムを最後まで一気に実行してから、ステップ実行で様子を見せます。そのため、実行の途中でキーボードから入力することはできません。<code>input()</code> で読む行は、ソースの下の<strong>「入力」の欄</strong>に、1 行ずつ書いておいてから「▶ 実行」を押します。</p>
+      <ul>
+        <li><code>input()</code> を 1 回呼ぶごとに、欄の 1 行を読みます</li>
+        <li>端末で実行したときと同じく、コンソールには、プロンプトの後に読んだ行が表示されます（例：<code>名前: 太郎</code>）</li>
+        <li>欄の行が足りないと <code>EOFError</code> になります</li>
+      </ul>
 
       <h3>共有されたリンクから開いたとき</h3>
       <p>授業や教材で配られた、特定のコードを開くリンクから PyVisualizer を開くと、そのコードが読み込まれた状態で始まります。このときサンプル選択には、組み込みのサンプルの代わりに、リンク先のコードだけが並びます（コードが1つだけのときは選択できません）。</p>
@@ -430,7 +449,8 @@
           <tr><td>サンプル選択を押しても選べない</td><td>コードを1つだけ開くリンクから開いています。組み込みのサンプルを使うには、<a href="index.html">PyVisualizer のトップ</a>を開き直してください</td></tr>
           <tr><td>「最大ステップ数 50,000 を超えたため停止しました」と表示される</td><td>ループが終わらない、再帰が止まらない、などの可能性があります。止まった時点までステップ実行で様子をたどり、終了条件を確認してください。処理の量が多いだけの場合は、扱うデータを小さくしてください</td></tr>
           <tr><td>キーボードでステップ実行できない</td><td>コードの編集欄などの入力欄にカーソルがあると、キー入力はそちらに入ります。実行モードで画面のほかの場所を一度クリックしてから操作してください</td></tr>
-          <tr><td>「〜はまだ対応していません」と表示される</td><td>PyVisualizer がまだ対応していない Python の構文です（<a href="#code">2. コードを用意する</a>の表）。対応している書き方に書き換えてください（例：内包表記は <code>for</code> 文と <code>append</code> に）</td></tr>
+          <tr><td><code>EOFError</code>「入力が足りません」と表示される</td><td><code>input()</code> で読む行が足りません。ソースの下の「入力」の欄に、読む行を 1 行ずつ書いてください（<a href="#input">input() を使うとき</a>）</td></tr>
+          <tr><td>「〜はまだ対応していません」と表示される</td><td>PyVisualizer がまだ対応していない Python の構文です（<a href="#code">2. コードを用意する</a>の表）。対応している書き方に書き換えてください（例：<code>with open(…)</code> のファイルの読み書きは使えないので、データはプログラムの中に書きます）。<code>math</code> 以外のモジュールの <code>import</code> は <code>ModuleNotFoundError</code> になります</td></tr>
           <tr><td>タブがグレーで選べない</td><td>そのコードでは使えないビューです（関数を使っていないコードの「置換」「呼び出しツリー」など）</td></tr>
           <tr><td>画面が正しく表示されない</td><td>パソコンの最新のブラウザを使ってください。ページを再読み込みすると直ることがあります（スマートフォンでの利用は想定していません）</td></tr>
         </tbody>

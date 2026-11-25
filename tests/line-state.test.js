@@ -16,7 +16,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { PyDebugger } from '../src/engine/py-debugger.js';
 import { repr, isSet, isTuple, isDict } from '../src/engine/values.js';
@@ -36,7 +36,7 @@ const STATEMENTS = new Set([
   'TryStatement', 'RaiseStatement', 'AssertStatement', 'ClassDeclaration',
 ]);
 
-const isFunctionValue = (v) => v && (v.__type__ === 'JSFunction' || typeof v === 'function' || isClass(v));
+const isFunctionValue = (v) => v && (v.__type__ === 'JSFunction' || typeof v === 'function' || isClass(v) || v.constructor?.name === 'PyModule');
 
 /** repr と同じだが、集合は要素の repr を並べ替えて出す（tools/trace_states.py の srepr と同じ規則） */
 function srepr(v) {
@@ -87,9 +87,11 @@ export function stateChanges(trace) {
 
 for (const file of files) {
   test(`変数の状態の変化: ${file.slice(ROOT.length)}`, () => {
-    const expected = JSON.parse(execFileSync('python3', ['-I', join(ROOT, 'tests/tools/trace_states.py'), file], { encoding: 'utf8' }));
+    const stdinFile = file.replace(/\.py$/, '.stdin');
+    const stdin = existsSync(stdinFile) ? readFileSync(stdinFile, 'utf8') : '';
+    const expected = JSON.parse(execFileSync('python3', ['-I', join(ROOT, 'tests/tools/trace_states.py'), file], { encoding: 'utf8', input: stdin }));
     assert.equal(expected.error, null);
-    const dbg = new PyDebugger(readFileSync(file, 'utf8'), { maxSteps: 2_000_000 });
+    const dbg = new PyDebugger(readFileSync(file, 'utf8'), { maxSteps: 2_000_000, stdin });
     assert.deepEqual(stateChanges(dbg.trace), expected.changes);
   });
 }

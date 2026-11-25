@@ -162,6 +162,7 @@
           <tr><td>Top</td><td>The Edit and Run buttons, the sample selector (in Edit mode), and the stepping buttons and slider (in Run mode). At the right end: user manual (<strong>?</strong>), display language (<strong>EN</strong> / <strong>日</strong>), and settings (<strong>⚙</strong>)</td></tr>
           <tr><td>Left (Source)</td><td>The code. You can edit it in Edit mode; in Run mode it highlights where execution currently is</td></tr>
           <tr><td>Right</td><td>The visualization views. Switch between them with the tabs at the top; a one-line description of the current view appears below the tabs</td></tr>
+          <tr><td>Bottom left (Input)</td><td>A box where you write, in advance, the lines that <code>input()</code> reads (see <a href="#input">Using input()</a>)</td></tr>
           <tr><td>Bottom right (Console)</td><td>Output from <code>print()</code>. It stays visible whichever view is selected</td></tr>
         </tbody>
       </table>
@@ -174,7 +175,7 @@
       <p>When you first open the app, it contains a sample program (the Fibonacci sequence).</p>
 
       <h3>Choosing a sample</h3>
-      <p>In Edit mode, pick one of 23 sample programs from the <strong>sample selector</strong> (drop-down) at the top of the screen.</p>
+      <p>In Edit mode, pick one of 27 sample programs from the <strong>sample selector</strong> (drop-down) at the top of the screen.</p>
       <figure>
         <img src="manual/en/screen-edit.png" alt="The screen in Edit mode: Edit and Run buttons and the sample selector at the top, bubble sort code on the left" width="1280" height="800" loading="lazy" />
         <figcaption>Edit mode (with the “Bubble Sort” sample selected)</figcaption>
@@ -186,9 +187,10 @@
           <tr><td>Sort (basic)</td><td>Bubble Sort, Selection Sort</td></tr>
           <tr><td>Sort (advanced)</td><td>Quick Sort, Merge Sort</td></tr>
           <tr><td>Sort (dicts)</td><td>Sort by numeric key, Sort by string key</td></tr>
-          <tr><td>Math / Algorithms</td><td>Euclid GCD (loop / recursive), Factorial, Fibonacci (recursive / DP), Big integers (factorial)</td></tr>
+          <tr><td>Math / Algorithms</td><td>Euclid GCD (loop / recursive), Factorial, Fibonacci (recursive / DP), Big integers (factorial), the <code>math</code> module</td></tr>
           <tr><td>Data Structures</td><td>Binary Tree and Linked List (built with dicts), Word Count (dict)</td></tr>
-          <tr><td>Scope / Python</td><td>Closure (<code>nonlocal</code>), Python features (f-strings, slices, etc.)</td></tr>
+          <tr><td>Scope / Python</td><td>Closure (<code>nonlocal</code>), Python features (f-strings, slices, etc.), Comprehensions, Exceptions (<code>try</code>/<code>except</code>)</td></tr>
+          <tr><td>Classes</td><td>Class &amp; Inheritance</td></tr>
           <tr><td>Study Tasks</td><td>Practice tasks (finding a bug, counting calls, tracing intermediate state, etc.)</td></tr>
         </tbody>
       </table>
@@ -196,21 +198,38 @@
       <h3>Writing your own code</h3>
       <p>In Edit mode you can freely edit the code on the left, or paste in code written elsewhere. When you are done, press “▶ Run”.</p>
       <ul>
-        <li>Use <code>print()</code> to check results; output appears in the console. Input with <code>input()</code> and reading or writing files are not available.</li>
+        <li>Use <code>print()</code> to check results; output appears in the console. Lines read by <code>input()</code> are written in advance in the “Input” box (see <a href="#input">Using input()</a>). Reading and writing files is not available.</li>
         <li>Edited code is not saved. Reloading the page resets it, so keep a copy of any code you want to keep.</li>
       </ul>
       <p>The supported part of Python is as follows.</p>
       <table>
         <thead><tr><th></th><th>Supported</th></tr></thead>
         <tbody>
-          <tr><td>Values</td><td>Integers (big integers are computed exactly), floats, strings, <code>True</code>/<code>False</code>, <code>None</code>, lists, tuples, dicts, <code>range</code></td></tr>
-          <tr><td>Statements</td><td>Assignment (unpacking such as <code>a, b = b, a</code>, <code>+=</code> etc., <code>a = b = 0</code>), <code>if</code>/<code>elif</code>/<code>else</code>, <code>while</code>, <code>for</code>, <code>break</code>/<code>continue</code>, <code>def</code>/<code>return</code> (default and keyword arguments), <code>pass</code>, <code>global</code>/<code>nonlocal</code></td></tr>
-          <tr><td>Expressions</td><td>Arithmetic (<code>//</code>, <code>%</code> and <code>**</code> behave as in Python), chained comparisons such as <code>1 &lt; x &lt; 10</code>, <code>and</code>/<code>or</code>/<code>not</code>, <code>in</code>, <code>is</code>, negative indices, slices, conditional expressions, <code>lambda</code>, f-strings</td></tr>
-          <tr><td>Built-in functions</td><td><code>print</code>, <code>len</code>, <code>range</code>, <code>abs</code>, <code>min</code>, <code>max</code>, <code>sum</code>, <code>sorted</code>, <code>reversed</code>, <code>enumerate</code>, <code>zip</code>, <code>str</code>, <code>int</code>, <code>float</code>, <code>bool</code>, <code>list</code>, <code>tuple</code>, <code>dict</code>, <code>repr</code>, <code>round</code>, <code>chr</code>, <code>ord</code>, and the main methods of lists, strings and dicts</td></tr>
-          <tr><td>Not yet supported</td><td><code>class</code>, <code>try</code>/<code>except</code>, comprehensions, sets, <code>*args</code>/<code>**kwargs</code>, <code>import</code>, <code>input()</code>, generators (<code>yield</code>), <code>%</code> string formatting. Using them gives a syntax error saying it is not supported yet</td></tr>
+          <tr><td>Values</td><td>Integers (big integers are computed exactly), floats, strings, <code>True</code>/<code>False</code>, <code>None</code>, lists, tuples, dicts, sets, <code>range</code></td></tr>
+          <tr><td>Statements</td><td>Assignment (unpacking such as <code>a, b = b, a</code>, <code>+=</code> etc., <code>a = b = 0</code>, slice assignment), <code>del</code>, <code>if</code>/<code>elif</code>/<code>else</code>, <code>while</code>, <code>for</code> (both with optional <code>else</code>), <code>break</code>/<code>continue</code>, <code>def</code>/<code>return</code>, <code>pass</code>, <code>global</code>/<code>nonlocal</code>, <code>class</code>, <code>try</code>/<code>except</code>/<code>else</code>/<code>finally</code>, <code>raise</code>, <code>assert</code>, <code>import math</code>/<code>from math import …</code></td></tr>
+          <tr><td>Expressions</td><td>Arithmetic (<code>//</code>, <code>%</code> and <code>**</code> behave as in Python), chained comparisons such as <code>1 &lt; x &lt; 10</code>, <code>and</code>/<code>or</code>/<code>not</code>, <code>in</code>, <code>is</code>, negative indices, slices, conditional expressions, <code>lambda</code>, f-strings, <code>%</code> string formatting, comprehensions (list, dict, set), generator expressions</td></tr>
+          <tr><td>Function arguments</td><td>Default and keyword arguments, <code>*args</code>/<code>**kwargs</code>, keyword-only arguments, <code>f(*xs, **d)</code> in calls</td></tr>
+          <tr><td>Classes</td><td><code>__init__</code>, methods, attributes, inheritance, <code>super()</code>, special methods (<code>__str__</code>, <code>__repr__</code>, <code>__eq__</code>, <code>__lt__</code>, <code>__len__</code>, <code>__add__</code>, etc.), user-defined exceptions</td></tr>
+          <tr><td>Built-in functions</td><td><code>print</code>, <code>input</code>, <code>len</code>, <code>range</code>, <code>abs</code>, <code>min</code>, <code>max</code>, <code>sum</code>, <code>sorted</code>, <code>reversed</code>, <code>enumerate</code>, <code>zip</code>, <code>str</code>, <code>int</code>, <code>float</code>, <code>bool</code>, <code>list</code>, <code>tuple</code>, <code>dict</code>, <code>set</code>, <code>repr</code>, <code>round</code>, <code>chr</code>, <code>ord</code>, <code>isinstance</code>, <code>issubclass</code>, <code>type</code>, <code>hasattr</code>, <code>getattr</code>, <code>setattr</code>, and the main methods of lists, strings, dicts and sets</td></tr>
+          <tr><td>Not yet supported</td><td>Generators (<code>yield</code>), <code>with</code>, decorators (<code>@classmethod</code>, etc.), <code>async</code>, <code>match</code>, modules other than <code>math</code>. Using them gives a syntax error saying it is not supported yet (modules give <code>ModuleNotFoundError</code>)</td></tr>
         </tbody>
       </table>
+      <p>Some displays differ from Python itself (CPython).</p>
+      <ul>
+        <li>Messages of exceptions raised by PyVisualizer (such as the <code>ValueError</code> from <code>int("x")</code>) are explanations in Japanese for beginners. The exception type names are the same. Messages of exceptions you raise with <code>raise</code> appear as written</li>
+        <li>Sets are shown in insertion order (Python itself uses an order determined by hash values)</li>
+        <li>Generator expressions (<code>(x for x in xs)</code>) are computed at once into a list. For uses such as <code>sum(x for x in xs)</code> the result is the same</li>
+        <li><code>print</code> of an instance shows <code>&lt;__main__.Dog object&gt;</code> without an address</li>
+      </ul>
       <p>Function calls stop when nested deeper than about 290 levels (Python itself allows 1000).</p>
+
+      <h3 id="input">Using input()</h3>
+      <p>PyVisualizer runs the whole program first and then lets you step through it, so you cannot type input while it is running. Write the lines that <code>input()</code> reads in the <strong>“Input” box</strong> below the source, one per line, before pressing “▶ Run”.</p>
+      <ul>
+        <li>Each call to <code>input()</code> reads one line from the box</li>
+        <li>As in a terminal, the console shows the line read after the prompt (e.g. <code>Name: Taro</code>)</li>
+        <li>If the box runs out of lines, you get an <code>EOFError</code></li>
+      </ul>
 
       <h3>Opening a shared link</h3>
       <p>If you open PyVisualizer from a link that points to specific code (for example, one handed out in a class or in course materials), the app starts with that code loaded. The sample selector then lists only the linked code instead of the built-in samples (and cannot be changed when there is only one piece of code).</p>
@@ -427,7 +446,8 @@
         <tbody>
           <tr><td>The stepping buttons are not shown</td><td>You are in Edit mode. Press “▶ Run”</td></tr>
           <tr><td>The sample selector is not shown</td><td>You are in Run mode. Press “✏ Edit”</td></tr>
-          <tr><td>A message says something is not supported yet</td><td>That part of Python is not supported by PyVisualizer yet (see the table in <a href="#code">2. Preparing code</a>). Rewrite it in a supported way (for example, a comprehension as a <code>for</code> loop with <code>append</code>)</td></tr>
+          <tr><td><code>EOFError</code> saying input ran out</td><td><code>input()</code> has no more lines to read. Write the lines in the “Input” box below the source, one per line (see <a href="#input">Using input()</a>)</td></tr>
+          <tr><td>A message says something is not supported yet</td><td>That part of Python is not supported by PyVisualizer yet (see the table in <a href="#code">2. Preparing code</a>). Rewrite it in a supported way (for example, files cannot be read with <code>with open(…)</code>, so put the data in the program). Importing a module other than <code>math</code> gives <code>ModuleNotFoundError</code></td></tr>
           <tr><td>The sample selector cannot be changed</td><td>You opened a link to a single piece of code. To use the built-in samples, open <a href="index.html">the PyVisualizer top page</a> again</td></tr>
           <tr><td>A Runtime Error says execution stopped because it exceeded the maximum of 50,000 steps</td><td>A loop or recursion may never end. Step through up to where it stopped and check the exit condition. If the program simply does a lot of work, use smaller data</td></tr>
           <tr><td>Keyboard shortcuts do not work</td><td>If the cursor is in an input area such as the code editor, keys go there. In Run mode, click somewhere else on the screen first</td></tr>

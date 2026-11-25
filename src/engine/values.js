@@ -296,6 +296,7 @@ export function typeName(v) {
   if (v instanceof PyRange) return 'range';
   if (isInstance(v)) return v.cls.name;
   if (isClass(v)) return 'type';
+  if (v && v.constructor?.name === 'PyModule') return 'module';
   if (isFunc(v)) return typeof v === 'function' ? 'builtin_function_or_method' : 'function';
   return 'object';
 }

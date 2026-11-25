@@ -106,7 +106,10 @@ export const EXCEPTIONS = {
   RecursionError: mk('RecursionError', RuntimeError),
   NotImplementedError: mk('NotImplementedError', RuntimeError),
   KeyboardInterrupt: mk('KeyboardInterrupt', BaseException),
+  EOFError: mk('EOFError', Exception),
 };
+EXCEPTIONS.ImportError = mk('ImportError', Exception);
+EXCEPTIONS.ModuleNotFoundError = mk('ModuleNotFoundError', EXCEPTIONS.ImportError);
 
 export const isExceptionClass = (v) => isClass(v) && isSubclass(v, BaseException);
 export const isException = (v) => isInstance(v) && isSubclass(v.cls, BaseException);

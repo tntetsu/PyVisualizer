@@ -9,8 +9,8 @@ on:
 # 共通の土台（兄弟リポジトリ）は、ブランチの最新ではなくタグで固定して参照する（docs/multilang-plan.md 3.1 節）。
 # 土台を変えたら、兄弟リポジトリに新しいタグを付けて、ここを書き換える。
 env:
-  INTERP_CORE_REF: multilang-core-2026.11.25     # JSInterpreter の feature/interp-core（共通コア）
-  INTERP_MASTER_REF: multilang-master-2026.11.25 # JSInterpreter の master（JS のエンジンの bundle を作る）
+  INTERP_CORE_REF: multilang-core-2026.11.25.2     # JSInterpreter の feature/interp-core（共通コア）
+  INTERP_MASTER_REF: multilang-master-2026.11.25.2 # JSInterpreter の master（JS のエンジンの bundle を作る）
   VISUALIZER_REF: multilang-2026.11.25           # JSVisualizer の feature/multilang（言語プロファイルの画面）
 
 permissions:

@@ -126,17 +126,18 @@ JSInterpreter・JSVisualizer の作業ブランチを main にマージすると
 - **C++ の範囲**：テンプレートと STL は大きいので、入門で使うもの（`string`・`vector`・`map`・`cout`/`cin`）に絞る。例外・RAII（デストラクタの呼ばれる時期）は見せる価値が高い
 - **入力**：`scanf`・`cin` は入力欄を使う
 
-## 5. 順番の提案
+## 5. 順番（2026-11-25 決定）
 
 学期中（〜2027 年 1 月）は、授業で使っているリポジトリ（JSInterpreter・JSVisualizer の main）を変えない。
 
 | 時期 | 進めること |
 |---|---|
-| 学期中 | 3.1 節（参照の固定）。新しい言語を 1 つ始める（Java か C。7 節で決める） |
-| 学期後（2027 年 2 月〜） | JSInterpreter・JSVisualizer の作業ブランチのマージ、3.2 節（土台の独立）、PyVisualizer の Phase 6（BhvVisualizer 連携）。続けて JS の Lezer 化と TypeScript |
-| その後 | もう 1 つの新しい言語、C++ |
+| 学期中 | 3.1 節（参照の固定）→ **JavaVisualizer** → **CppVisualizer**（C を先に、続けて C++）。画面に要るものは JSVisualizer の作業ブランチ `feature/multilang` に足す |
+| 学期後（2027 年 2 月〜） | JSInterpreter・JSVisualizer の作業ブランチのマージ、3.2 節（土台の独立）、PyVisualizer の Phase 6（BhvVisualizer 連携）、JS の Lezer 化と TypeScript（TSVisualizer） |
 
 JS の Lezer 化を学期後にするのは、授業の JS 版に影響しうる変更で、学期中は main にマージできず、作業ブランチ（`feature/interp-core`）との取り込みも重なるため。
+
+学期中に Java と C/C++ の 2 つを進めるので、画面の作業ブランチへの変更が 3 つの言語（Python・Java・C/C++）にまたがる。3.1 節の参照の固定を、JavaVisualizer を始める前に済ませる。
 
 ## 6. 正解の処理系（2026-11-25 の環境）
 
@@ -151,7 +152,7 @@ JS の Lezer 化を学期後にするのは、授業の JS 版に影響しうる
 
 | # | 論点 | 選択肢 | 推奨 |
 |---|---|---|---|
-| 1 | 学期中に始める言語 | Java／C | どちらでもよい。Java は静的型の土台（型・あふれ・クラス）を、C はメモリのモデルを先に作れる。授業で使う予定がある方を先にする |
+| 1 | 学期中に始める言語 | Java／C | **決定（2026-11-25）：Java から始め、学期中に C/C++ まで進める**。JS の Lezer 化・TypeScript・土台の独立は学期後 |
 | 2 | C と C++ のリポジトリの名前 | 1 つのリポジトリで C 版を下の階層に置く（案 1）／C 版のサイトだけの小さなリポジトリ CVisualizer を別に作る（案 2） | **決定（2026-11-25）：案 1**。リポジトリは CppVisualizer。C 版は `…/CppVisualizer/c/` で公開し、ツールの名前は CVisualizer と呼ぶ |
 | 3 | サイトを言語ごとに分けるか | 言語ごと（PyVisualizer と同じ）／1 つのサイトで言語を切り替える | **決定（2026-11-25）：言語ごと**（Java は JavaVisualizer、C と C++ は CppVisualizer の中の 2 つのサイト）。TypeScript は 4 で決める |
 | 4 | TypeScript のサイト | JSVisualizer の中で言語として選ぶ／別のサイト | 学期後の土台の整理（3.2 節）と一緒に決める |

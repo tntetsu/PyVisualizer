@@ -107,19 +107,22 @@ PyVisualizer は、プログラムを最後まで一気に実行してから、�
 | | 内容 |
 |---|---|
 | 値 | `int`（大きな整数も正確に計算）、`float`、`str`、`bool`、`None`、`list`、`tuple`、`dict`、`set`、`range` |
-| 文 | 代入（アンパック、`+=` など、`a = b = 0`、スライスへの代入）、`del`、`if`/`elif`/`else`、`while`、`for`（どちらも `else` 付き可）、`break`/`continue`、`def`/`return`、`pass`、`global`/`nonlocal`、`class`、`try`/`except`/`else`/`finally`、`raise`、`assert`、`import math`/`from math import …` |
-| 式 | 算術（`//`・`%`・`**` も Python の意味で）、比較の連鎖、`and`/`or`/`not`、`in`、`is`、負の添字、スライス、条件式、`lambda`、f 文字列、`%` 書式、内包表記（リスト・辞書・集合）、ジェネレーター式 |
+| 文 | 代入（アンパック、`first, *rest = xs`、`+=` など、`a = b = 0`、スライスへの代入、型注釈付きの代入）、`del`、`if`/`elif`/`else`、`while`、`for`（どちらも `else` 付き可）、`break`/`continue`、`def`/`return`（型注釈も可）、`pass`、`global`/`nonlocal`、`class`、デコレーター（自作・`@property`・`@staticmethod`・`@classmethod`）、`try`/`except`/`else`/`finally`、`raise`、`assert`、`with`（自作のコンテキストマネージャー）、`match`/`case`、`import`/`from … import …` |
+| 式 | 算術（`//`・`%`・`**` も Python の意味で）、比較の連鎖、`and`/`or`/`not`、`in`、`is`、負の添字、スライス、条件式、`lambda`、`:=`、`[*a, *b]`、f 文字列（`{x=}`・`!r`・書式指定）、`"{}".format()`、`%` 書式、内包表記（リスト・辞書・集合）、ジェネレーター式 |
 | 関数の引数 | デフォルト引数、キーワード引数、`*args`/`**kwargs`、キーワード専用引数、`f(*xs, **d)` |
 | クラス | `__init__`、メソッド、属性、継承（C3 の MRO）、`super()`、特殊メソッド（`__str__`・`__eq__`・`__lt__`・`__add__` など）、ユーザー定義の例外 |
-| 組み込み関数 | `print`、`input`、`len`、`range`、`abs`、`min`、`max`、`sum`、`sorted`、`reversed`、`enumerate`、`zip`、`str`、`int`、`float`、`bool`、`list`、`tuple`、`dict`、`set`、`repr`、`round`、`chr`、`ord`、`isinstance`、`issubclass`、`type`、`hasattr`、`getattr`、`setattr`、リスト・文字列・辞書・集合の主なメソッド |
-| まだ使えないもの | ジェネレーター（`yield`）、`with`、デコレーター、`async`、`match`、`math` 以外のモジュール、ファイルの読み書き |
+| 組み込み関数 | `print`、`input`、`len`、`range`、`abs`、`min`、`max`、`sum`、`sorted`、`reversed`、`enumerate`、`zip`、`map`、`filter`、`any`、`all`、`divmod`、`pow`、`round`、`str`、`int`（基数も）、`float`、`bool`、`list`、`tuple`、`dict`、`set`、`repr`、`format`、`hex`/`bin`/`oct`、`chr`、`ord`、`iter`、`next`、`isinstance`、`issubclass`、`type`、`callable`、`id`、`hash`、`hasattr`、`getattr`、`setattr`、`exit`、リスト・文字列・辞書・集合の主なメソッド |
+| モジュール | `math`、`random`（`seed(整数)` で CPython と同じ乱数の列）、`time`、`datetime`（`date`・`datetime`・`timedelta`）、`collections`（`Counter`・`defaultdict`・`deque`）、`copy`、`statistics`、`string` |
+| まだ使えないもの | ジェネレーター（`yield`）、ファイルの読み書き（`open()`）、`async`、上の表にないモジュール |
 
 CPython と表示が違うところ：
 
 - PyVisualizer が出す例外のメッセージは、日本語表示では初学者向けの日本語の説明（例外の型の名前は同じ。`raise` で投げた例外のメッセージは書いたとおり）。英語表示では CPython と同じ文面
 - 集合は入れた順に表示する（CPython はハッシュ値で決まる順）
 - ジェネレーター式は、その場で全部計算したリストとして扱う
-- インスタンスの既定の表示（`<__main__.Dog object>`）にアドレスを付けない
+- インスタンスの既定の表示（`<__main__.Dog object>`）や `<map object>` にアドレスを付けない
+- `map()` に渡した関数は、`map()` を呼んだときに全部呼ぶ（CPython は値を取り出すときに呼ぶ）
+- `time.sleep()` は待たずに、`time.time()` などの時刻だけを進める
 - 関数の呼び出しの深さの上限はおよそ 290 段（CPython は 1000 段）。実行は 50,000 ステップで止める
 
 ---

@@ -107,19 +107,22 @@ Syntax errors show the offending line and an explanation of common causes (a mis
 | | Supported |
 |---|---|
 | Values | `int` (arbitrary precision), `float`, `str`, `bool`, `None`, `list`, `tuple`, `dict`, `set`, `range` |
-| Statements | assignment (unpacking, `+=` etc., `a = b = 0`, slice assignment), `del`, `if`/`elif`/`else`, `while`, `for` (both with optional `else`), `break`/`continue`, `def`/`return`, `pass`, `global`/`nonlocal`, `class`, `try`/`except`/`else`/`finally`, `raise`, `assert`, `import math`/`from math import …` |
-| Expressions | arithmetic (`//`, `%`, `**` with Python semantics), chained comparisons, `and`/`or`/`not`, `in`, `is`, negative indices, slices, conditional expressions, `lambda`, f-strings, `%` formatting, comprehensions (list / dict / set), generator expressions |
+| Statements | assignment (unpacking, `first, *rest = xs`, `+=` etc., `a = b = 0`, slice assignment, annotated assignment), `del`, `if`/`elif`/`else`, `while`, `for` (both with optional `else`), `break`/`continue`, `def`/`return` (type annotations allowed), `pass`, `global`/`nonlocal`, `class`, decorators (your own, `@property`, `@staticmethod`, `@classmethod`), `try`/`except`/`else`/`finally`, `raise`, `assert`, `with` (your own context managers), `match`/`case`, `import`/`from … import …` |
+| Expressions | arithmetic (`//`, `%`, `**` with Python semantics), chained comparisons, `and`/`or`/`not`, `in`, `is`, negative indices, slices, conditional expressions, `lambda`, `:=`, `[*a, *b]`, f-strings (`{x=}`, `!r`, format specs), `"{}".format()`, `%` formatting, comprehensions (list / dict / set), generator expressions |
 | Arguments | default arguments, keyword arguments, `*args`/`**kwargs`, keyword-only arguments, `f(*xs, **d)` |
 | Classes | `__init__`, methods, attributes, inheritance (C3 MRO), `super()`, special methods (`__str__`, `__eq__`, `__lt__`, `__add__`, etc.), user-defined exceptions |
-| Built-ins | `print`, `input`, `len`, `range`, `abs`, `min`, `max`, `sum`, `sorted`, `reversed`, `enumerate`, `zip`, `str`, `int`, `float`, `bool`, `list`, `tuple`, `dict`, `set`, `repr`, `round`, `chr`, `ord`, `isinstance`, `issubclass`, `type`, `hasattr`, `getattr`, `setattr`, and the main methods of list, str, dict, and set |
-| Not yet supported | generators (`yield`), `with`, decorators, `async`, `match`, modules other than `math`, file I/O |
+| Built-ins | `print`, `input`, `len`, `range`, `abs`, `min`, `max`, `sum`, `sorted`, `reversed`, `enumerate`, `zip`, `map`, `filter`, `any`, `all`, `divmod`, `pow`, `round`, `str`, `int` (with base), `float`, `bool`, `list`, `tuple`, `dict`, `set`, `repr`, `format`, `hex`/`bin`/`oct`, `chr`, `ord`, `iter`, `next`, `isinstance`, `issubclass`, `type`, `callable`, `id`, `hash`, `hasattr`, `getattr`, `setattr`, `exit`, and the main methods of list, str, dict, and set |
+| Modules | `math`, `random` (`seed(integer)` gives the same sequence as CPython), `time`, `datetime` (`date`, `datetime`, `timedelta`), `collections` (`Counter`, `defaultdict`, `deque`), `copy`, `statistics`, `string` |
+| Not yet supported | generators (`yield`), file I/O (`open()`), `async`, modules not listed above |
 
 Differences from CPython:
 
 - Exception messages produced by PyVisualizer are the same as CPython's in English display, and beginner-oriented explanations in Japanese display (messages you pass to `raise` are shown as written)
 - Sets are shown in insertion order (CPython uses hash order)
 - Generator expressions are evaluated eagerly into a list
-- The default display of an instance (`<__main__.Dog object>`) has no address
+- The default display of an instance (`<__main__.Dog object>`) and of `<map object>` has no address
+- The function passed to `map()` is called for all items when `map()` is called (CPython calls it as each value is taken out)
+- `time.sleep()` does not wait; it only advances times such as `time.time()`
 - The call depth limit is about 290 (CPython: 1000), and execution stops after 50,000 steps
 
 ---

@@ -235,14 +235,17 @@ function compare(op, a, b, loc) {
 
 // ── 添字・スライス ────────────────────────────────────────────────────────────
 
-function normIndex(seq, key, loc) {
+/** @param {boolean} [assign] 代入・削除の添字か（範囲外のメッセージを CPython の list assignment index out of range に対応させる） */
+function normIndex(seq, key, loc, assign = false) {
   if (!(isInt(key) || isBool(key))) {
     throw new PyError('TypeError', `${typeName(seq)} の添字は整数でなければなりません（${typeName(key)} が指定されました）`, loc);
   }
   const n = seq instanceof PyRange ? seq.length : seq.length;
   const i = num(key) < 0 ? num(key) + n : num(key);
   if (i < 0 || i >= n) {
-    throw new PyError('IndexError', `${typeName(seq)} の範囲外の位置 ${num(key)} を指定しています（長さ ${n}）`, loc);
+    throw new PyError('IndexError', assign
+      ? `${typeName(seq)} の範囲外の位置 ${num(key)} は変更・削除できません（長さ ${n}）`
+      : `${typeName(seq)} の範囲外の位置 ${num(key)} を指定しています（長さ ${n}）`, loc);
   }
   return i;
 }
@@ -256,7 +259,7 @@ export function getItem(obj, key, loc) {
 
 function setItem(obj, key, value, loc) {
   if (isDict(obj)) { dictSet(obj, key, value, loc); return; }
-  if (isList(obj)) { obj[normIndex(obj, key, loc)] = value; return; }
+  if (isList(obj)) { obj[normIndex(obj, key, loc, true)] = value; return; }
   throw new PyError('TypeError', `${typeName(obj)} の要素は変更できません`, loc);
 }
 
@@ -335,24 +338,25 @@ function makeFunction(node, env, rt, depth, callDepth) {
  */
 function bindArgs(fn, args, kwargs, env, loc) {
   const spec = fn.paramSpec;
+  const fname = fn.qualName ?? fn.name;   // メッセージに使う名前（メソッドは A.f）
   const vals = new Map();
   const pos = spec.filter(p => p.kind === 'pos');
   const rest = spec.find(p => p.kind === 'rest');
   const kwrest = spec.find(p => p.kind === 'kwrest');
   args.slice(0, pos.length).forEach((a, i) => vals.set(pos[i].name, a));
   if (args.length > pos.length) {
-    if (!rest) throw new PyError('TypeError', `${fn.name}() の位置引数は ${pos.length} 個までですが、${args.length} 個渡されました`, loc);
+    if (!rest) throw new PyError('TypeError', `${fname}() の位置引数は ${pos.length} 個までですが、${args.length} 個渡されました`, loc);
   }
   if (rest) vals.set(rest.name, makeTuple(args.slice(pos.length)));
   const extra = makeDict();
   for (const [k, v] of Object.entries(kwargs)) {
     const p = spec.find(q => q.name === k && (q.kind === 'pos' || q.kind === 'kwonly'));
     if (!p) {
-      if (!kwrest) throw new PyError('TypeError', `${fn.name}() に ${k} という名前の引数はありません`, loc);
+      if (!kwrest) throw new PyError('TypeError', `${fname}() に ${k} という名前の引数はありません`, loc);
       dictSet(extra, k, v, loc);
       continue;
     }
-    if (vals.has(p.name)) throw new PyError('TypeError', `${fn.name}() の引数 ${k} が 2 回指定されています`, loc);
+    if (vals.has(p.name)) throw new PyError('TypeError', `${fname}() の引数 ${k} が 2 回指定されています`, loc);
     vals.set(p.name, v);
   }
   if (kwrest) vals.set(kwrest.name, extra);
@@ -361,7 +365,7 @@ function bindArgs(fn, args, kwargs, env, loc) {
   for (const p of [...spec].sort((x, y) => order[x.kind] - order[y.kind])) {
     if (!vals.has(p.name)) {
       if (p.default === undefined) {
-        throw new PyError('TypeError', `${fn.name}() の${p.kind === 'kwonly' ? 'キーワード専用' : ''}引数 '${p.name}' が渡されていません`, loc);
+        throw new PyError('TypeError', `${fname}() の${p.kind === 'kwonly' ? 'キーワード専用' : ''}引数 '${p.name}' が渡されていません`, loc);
       }
       vals.set(p.name, p.default);
     }
@@ -542,7 +546,7 @@ function deleteTarget(t, env, rt, d, callDepth) {
   }
   const key = evaluate(t.property, env, rt, d, callDepth);
   if (isDict(obj)) { dictDelete(obj, key, t.loc); return; }
-  if (isList(obj)) { obj.splice(normIndex(obj, key, t.loc), 1); return; }
+  if (isList(obj)) { obj.splice(normIndex(obj, key, t.loc, true), 1); return; }
   throw new PyError('TypeError', `${typeName(obj)} の要素は消せません`, t.loc);
 }
 
@@ -627,7 +631,12 @@ function _eval(node, env, rt, depth, callDepth) {
       const r = ev(node.body, cenv);
       if (isSignal(r)) return r;
       const cls = new PyClass(node.id.name, bases.length ? bases : [ObjectClass], Object.fromEntries(cenv.bindings));
-      for (const v of cenv.bindings.values()) if (v && v.__type__ === 'JSFunction' && v.classEnv === cenv) v.ownerClass = cls;
+      for (const v of cenv.bindings.values()) {
+        if (v && v.__type__ === 'JSFunction' && v.classEnv === cenv) {
+          v.ownerClass = cls;
+          v.qualName = `${cls.name}.${v.name}`;   // メッセージでは CPython と同じくクラス名を付ける（A.__init__()。ADR-010）
+        }
+      }
       assignName(node.id.name, cls, env, node.loc);
       return undefined;
     }

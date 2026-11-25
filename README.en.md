@@ -89,7 +89,7 @@ PyVisualizer runs the whole program first and then lets you step through the rec
 
 ### Clear error messages
 
-Syntax errors show the offending line and an explanation of common causes (a missing `:`, misaligned indentation, an unclosed bracket, etc.). Runtime exceptions show the Python exception name (such as `IndexError`) with an explanation, and you can step through the execution up to the point where the exception occurred. The explanations are currently in Japanese only.
+Syntax errors show the offending line and an explanation of common causes (a missing `:`, misaligned indentation, an unclosed bracket, etc.). Runtime exceptions show the Python exception name (such as `IndexError`) with an explanation, and you can step through the execution up to the point where the exception occurred. In English display the messages are the same as CPython's; in Japanese display they are explanations for beginners.
 
 ### Other features
 
@@ -116,7 +116,7 @@ Syntax errors show the offending line and an explanation of common causes (a mis
 
 Differences from CPython:
 
-- Exception messages produced by PyVisualizer are beginner-oriented explanations in Japanese (exception type names are the same; messages you pass to `raise` are shown as written)
+- Exception messages produced by PyVisualizer are the same as CPython's in English display, and beginner-oriented explanations in Japanese display (messages you pass to `raise` are shown as written)
 - Sets are shown in insertion order (CPython uses hash order)
 - Generator expressions are evaluated eagerly into a list
 - The default display of an instance (`<__main__.Dog object>`) has no address

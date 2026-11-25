@@ -240,3 +240,43 @@ test('ADR-009 例4：制御フローのビューに for の else が表示され
   assert.equal(loop.type, 'for');
   assert.deepEqual(loop.else_.map(it => [it.label, it.execCount]), [['print("not found")', 0]]);
 });
+
+// ── ADR-010：エラーメッセージを表示言語に合わせる（英語は CPython と同じ文面） ─────────────
+
+/** エラーの表示欄に出る文字列（code-editor は言語プロファイルの localizeError で表示言語に合わせる） */
+const errorBox = (src, lang, opts = {}) => {
+  const profile = createPythonProfile({});
+  try { new profile.Debugger(src, { lang, ...opts }); } catch (e) { return profile.localizeError(e.message, lang); }
+  return null;
+};
+
+test('ADR-010 例1：英語表示では、実行時のエラーが CPython と同じ文面で表示される（日本語表示では従来どおり）', () => {
+  const src = 'x = [1, 2, 3]\nprint(x[5])\n';
+  assert.equal(errorBox(src, 'en'), 'IndexError: list index out of range (line 2)');
+  assert.equal(errorBox(src, 'ja'), 'IndexError: list の範囲外の位置 5 を指定しています（長さ 3）（2行目）');
+});
+
+test('ADR-010 例2：英語表示では、構文エラーも英語で表示される', () => {
+  assert.equal(errorBox('if x > 1\n    print(x)\n', 'en'), "SyntaxError (line 1): expected ':'");
+});
+
+test('ADR-010 例3：英語表示で実行すると、except で捕まえた例外を print した内容も英語になる', () => {
+  const src = 'try:\n    int("x")\nexcept ValueError as e:\n    print(e)\n';
+  const out = (lang) => joinConsoleLines(new (createPythonProfile({}).Debugger)(src, { lang }).consoleLogs).map(l => l.text);
+  assert.deepEqual(out('en'), ["invalid literal for int() with base 10: 'x'"]);
+  assert.deepEqual(out('ja'), ["'x' は整数に変換できません"]);
+});
+
+test('ADR-010 例4：表示言語を切り替えると、表示中のエラーはもう一度実行しなくても切り替わる', () => {
+  const profile = createPythonProfile({});
+  let message = null;
+  try { new profile.Debugger('print(totl)\n', { lang: 'ja' }); } catch (e) { message = e.message; }
+  assert.equal(profile.localizeError(message, 'ja'), "NameError: 'totl' という名前は定義されていません（1行目）");
+  assert.equal(profile.localizeError(message, 'en'), "NameError: name 'totl' is not defined (line 1)");
+});
+
+test('ADR-010 例5：メソッドの引数の誤りは、CPython と同じくクラス名を付けて表示される', () => {
+  const src = 'class A:\n    def __init__(self, x):\n        self.x = x\na = A()\n';
+  assert.equal(errorBox(src, 'en'), "TypeError: A.__init__() missing 1 required positional argument: 'x' (line 4)");
+  assert.equal(errorBox(src, 'ja'), "TypeError: A.__init__() の引数 'x' が渡されていません（4行目）");
+});

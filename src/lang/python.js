@@ -9,6 +9,30 @@ import {
   PyFloat, PyRange, isTuple, isSet, isDict, num, repr, strRepr,
 } from '../engine/values.js';
 import { isClass, isInstance, isException } from '../engine/objects.js';
+import { messageToEnglish } from '../engine/messages-en.js';
+import { getLang } from 'js-visualizer/src/i18n.js';
+import { localizeErrorMessage } from 'js-visualizer/src/utils/error-message.js';
+
+/**
+ * 画面の表示言語で実行する PyDebugger（except で捕まえた例外の str(e) が表示言語になる。ADR-010）。
+ * options.lang を渡せば、それを優先する
+ */
+export class DisplayLangPyDebugger extends PyDebugger {
+  constructor(source, options = {}) {
+    super(source, { lang: getLang(), ...options });
+  }
+}
+
+/**
+ * エラーの表示欄の文字列を表示言語に合わせる（ADR-010）。エンジンのメッセージは日本語で作られるので、英語表示のときだけ置き換える。
+ * PyVisualizer の形でないメッセージ（共通コアの「最大ステップ数を超えた」など）は、JS 用の英語化に任せる
+ * @param {string} message
+ * @param {'ja'|'en'} lang
+ */
+export function localizePythonError(message, lang) {
+  if (lang !== 'en') return message;
+  return messageToEnglish(message) ?? localizeErrorMessage(message, lang);
+}
 
 /** Python の値の見せ方（JSVisualizer の ValueModel） */
 export const pythonValueModel = {
@@ -90,8 +114,9 @@ export const pythonValueModel = {
 export const createPythonProfile = (samples, { groups, defaultSample } = {}) => ({
   id: 'python',
   name: 'Python',
-  Debugger: PyDebugger,
+  Debugger: DisplayLangPyDebugger,
   ExecutionError,
+  localizeError: localizePythonError,
   editorExtension: () => python(),
   supportsInput: true,   // 入力欄を出し、実行時に { stdin } を渡す（input()。ADR-007）
   samples,

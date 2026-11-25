@@ -17,7 +17,7 @@
 
 [BhvVisualizer](../BhvVisualizer)（学習ログの収集・分析）と組み合わせて授業で使えるようにすることも目標です。
 
-**現在のステータス**: Phase 0〜5 完了・公開済み（2026-11-25）。リポジトリも公開し、`main` への push で GitHub Pages（https://tntetsu.github.io/PyVisualizer/）に公開される（[docs/development-plan.md](docs/development-plan.md) 6 節の決定 5・6.2 節）。報告書は [docs/phase0-report.md](docs/phase0-report.md)〜[docs/phase5-report.md](docs/phase5-report.md)。パーサーは Lezer で確定。共通コア `js-interpreter/core` は JSInterpreter の作業ブランチ `feature/interp-core`（JSInterpreter の ADR-015）。フロントエンドは JSVisualizer の作業ブランチ `feature/multilang` の言語プロファイル（JSVisualizer の ADR-055）を使い、Python のプロファイルは [src/lang/python.js](src/lang/python.js)（[ADR-004](docs/adr/ADR-004-python-display-in-frontend.md)）。Python の値の表現は [ADR-002](docs/adr/ADR-002-python-value-representation.md)、トレースへの追加は [ADR-003](docs/adr/ADR-003-python-trace-additions.md)、Phase 5 で入れた機能は ADR-005〜007、公開後の修正は ADR-008（コード表示のオレンジを式にだけ付ける）。方針：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、BhvVisualizer 連携（Phase 6）は今期の授業が終わってから着手する（2026-11-25 決定）。
+**現在のステータス**: Phase 0〜5 完了・公開済み（2026-11-25）。リポジトリも公開し、`main` への push で GitHub Pages（https://tntetsu.github.io/PyVisualizer/）に公開される（[docs/development-plan.md](docs/development-plan.md) 6 節の決定 5・6.2 節）。報告書は [docs/phase0-report.md](docs/phase0-report.md)〜[docs/phase5-report.md](docs/phase5-report.md)。パーサーは Lezer で確定。共通コア `js-interpreter/core` は JSInterpreter の作業ブランチ `feature/interp-core`（JSInterpreter の ADR-015）。フロントエンドは JSVisualizer の作業ブランチ `feature/multilang` の言語プロファイル（JSVisualizer の ADR-055）を使い、Python のプロファイルは [src/lang/python.js](src/lang/python.js)（[ADR-004](docs/adr/ADR-004-python-display-in-frontend.md)）。Python の値の表現は [ADR-002](docs/adr/ADR-002-python-value-representation.md)、トレースへの追加は [ADR-003](docs/adr/ADR-003-python-trace-additions.md)、Phase 5 で入れた機能は ADR-005〜007、公開後の修正は ADR-008（コード表示のオレンジを式にだけ付ける）・ADR-009（値の表記の細部・制御フローのループの else）・ADR-010（エラーメッセージを表示言語に合わせる。英語は CPython と同じ文面）。方針：リポジトリ構成は [ADR-001](docs/adr/ADR-001-repository-structure.md)、JSInterpreter・JSVisualizer への変更の main へのマージは学期後（2027年2月以降）、BhvVisualizer 連携（Phase 6）は今期の授業が終わってから着手する（2026-11-25 決定）。
 
 ## 関連リポジトリ
 
@@ -41,6 +41,7 @@ PyVisualizer/
 │   ├── values.js             # 値の表現（int の number/BigInt・PyFloat・tuple・set・PyDict・PyRange。ADR-002・005）、repr/str、比較、反復
 │   ├── objects.js            # クラス（PyClass・C3 の MRO）・インスタンス・例外のクラスの階層・特殊メソッドの呼び出し（ADR-006）
 │   ├── modules.js            # import できるモジュール（math だけ。ADR-007）
+│   ├── messages-en.js        # エラーメッセージの英語化（日本語の文型 → CPython と同じ英語。ADR-010）
 │   └── py-debugger.js        # PyDebugger（TraceDebugger の派生、PY_NODE_CATEGORIES。debugger-adapter.js が使う名前でも export）
 ├── samples/                  # Python のサンプル 27 本（JSVisualizer の組み込みサンプルに対応）と samples.json（表示名・分類・既定。ビルドが食い違いを検出する）
 ├── manual/                   # 利用者向けマニュアル（manual.html・manual.en.html と ja/・en/ のスクリーンショット）。ビルドが web/ にコピーする
@@ -52,6 +53,7 @@ PyVisualizer/
 │   ├── debugger.test.js      # PyDebugger と共通コアの組み合わせ（LoopBinding・tuple のクローン・出力の断片）
 │   ├── line-state.test.js    # 変数の状態の変化の列を CPython と比べる（tools/trace_states.py が CPython 側）
 │   ├── adr-examples.test.js  # 利用者に見える ADR の例をそのままテストにしたもの（テスト名に ADR 番号）
+│   ├── messages-en.test.js   # エラーメッセージの英語化。エンジンのソースからメッセージを集めて訳し漏れを検出する（ADR-010）
 │   ├── tools/trace_states.py # CPython で sys.settrace を使い、変数の状態の変化の列を JSON で出す
 │   └── cases/                # 意味論・例外の比較用の Python プログラム
 ├── scripts/
@@ -111,4 +113,4 @@ JSVisualizer と BhvVisualizer は「ソフトウェア基礎論」（2026-09-30
 
 **利用者に見える ADR には例とテストを付ける**（2026-11-25、JSVisualizer と同じ約束）：画面やステップ実行で何が表示される／されないかを決める・直す ADR には、利用者に見える例（入力のプログラムと「表示される／されない」）を実装用語なしで書き、同じ例をテストにする（テスト名に ADR 番号を入れる。`tests/adr-examples.test.js`）。テストは、直す前のコードで失敗することを確かめてから足す。内部の構造だけの ADR には求めない。
 
-Python の意味論の正しさは、同じプログラムを CPython（`python3`）でも実行して比較するテストで確認する（[docs/development-plan.md](docs/development-plan.md) 4.3 節）。出力と例外の種類（`tests/oracle.test.js`）と、変数の状態の変化の列（`tests/line-state.test.js`）の 2 つを比べる。`samples/` と `tests/cases/` に置いた `.py` は自動で両方の対象になる（`error_`（例外で終わる）・`output_`（`sorted` が特殊メソッドを呼ぶ順序など、変数の状態を比べられない）で始まるテストケースは出力の比較だけ）。`input()` で読む行は、同じ名前の `.stdin` ファイルに書く（CPython 側は `tests/tools/run_echo.py` で、読んだ行を表示する形にそろえる）。1 行に複数の文を書くと変数の状態の比較が合わなくなるので書かない。
+Python の意味論の正しさは、同じプログラムを CPython（`python3`）でも実行して比較するテストで確認する（[docs/development-plan.md](docs/development-plan.md) 4.3 節）。出力と例外の種類（`tests/oracle.test.js`。英語表示でも実行し、出力と例外のメッセージを CPython と比べる。ADR-010）と、変数の状態の変化の列（`tests/line-state.test.js`）の 2 つを比べる。`samples/` と `tests/cases/` に置いた `.py` は自動で両方の対象になる（`error_`（例外で終わる）・`output_`（`sorted` が特殊メソッドを呼ぶ順序など、変数の状態を比べられない）で始まるテストケースは出力の比較だけ）。`input()` で読む行は、同じ名前の `.stdin` ファイルに書く（CPython 側は `tests/tools/run_echo.py` で、読んだ行を表示する形にそろえる）。1 行に複数の文を書くと変数の状態の比較が合わなくなるので書かない。

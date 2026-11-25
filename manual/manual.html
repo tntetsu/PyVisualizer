@@ -216,7 +216,7 @@
       </table>
       <p>Python 本体（CPython）と表示が違うところがあります。</p>
       <ul>
-        <li>PyVisualizer が出す例外のメッセージ（<code>int("x")</code> の <code>ValueError</code> など）は、初学者向けの日本語の説明です。例外の型の名前は同じです。<code>raise</code> で投げた例外のメッセージは、書いたとおりに出ます</li>
+        <li>PyVisualizer が出す例外のメッセージ（<code>int("x")</code> の <code>ValueError</code> など）は、初学者向けの日本語の説明です。例外の型の名前は同じです。<code>raise</code> で投げた例外のメッセージは、書いたとおりに出ます。英語表示のときは、Python 本体と同じ英語のメッセージになります</li>
         <li>集合は、入れた順に表示されます（Python 本体では、ハッシュ値で決まる順になります）</li>
         <li>ジェネレーター式（<code>(x for x in xs)</code>）は、その場で全部計算したリストになります。<code>sum(x for x in xs)</code> のような使い方では、結果は同じです</li>
         <li>インスタンスを <code>print</code> したときの <code>&lt;__main__.Dog object&gt;</code> には、アドレスが付きません</li>
@@ -253,7 +253,7 @@
         <thead><tr><th>表示</th><th>意味</th></tr></thead>
         <tbody>
           <tr><td><strong>Syntax Error</strong>（構文エラー）</td><td><code>:</code> の付け忘れ、インデント（字下げ）のずれ、カッコの閉じ忘れなど、書き方の誤りで実行できない。メッセージに、誤りのある行と、よくある原因が表示されます</td></tr>
-          <tr><td><strong>Runtime Error</strong>（実行エラー）</td><td>書き方は正しいが、実行している途中で問題が起きた（リストの範囲外の添字を使った、0 で割った、など）。メッセージは <code>IndexError</code> のような Python の例外の名前と、日本語の説明です。エラーが起きる直前までは、ステップ実行で様子をたどれます</td></tr>
+          <tr><td><strong>Runtime Error</strong>（実行エラー）</td><td>書き方は正しいが、実行している途中で問題が起きた（リストの範囲外の添字を使った、0 で割った、など）。メッセージは <code>IndexError</code> のような Python の例外の名前と、日本語の説明です（英語表示のときは、Python 本体と同じ英語のメッセージです）。エラーが起きる直前までは、ステップ実行で様子をたどれます</td></tr>
         </tbody>
       </table>
       <figure>
@@ -431,7 +431,7 @@
         <thead><tr><th>ボタン</th><th>説明</th></tr></thead>
         <tbody>
           <tr><td>右上の <strong>?</strong></td><td>この使い方のページを開きます（表示言語に合わせて日本語版／英語版）</td></tr>
-          <tr><td>右上の <strong>EN</strong> ／ <strong>日</strong></td><td>ボタンやタブの表示を英語／日本語に切り替えます（Python のエラーメッセージは、今のところ日本語だけです）。初めて開いたときは、ブラウザの言語が日本語なら日本語、それ以外なら英語で表示します</td></tr>
+          <tr><td>右上の <strong>EN</strong> ／ <strong>日</strong></td><td>ボタンやタブの表示とエラーメッセージを英語／日本語に切り替えます。<code>except</code> で捕まえた例外を <code>print</code> した内容は、実行したときの言語で出ます（切り替えたあとは、もう一度実行してください）。初めて開いたときは、ブラウザの言語が日本語なら日本語、それ以外なら英語で表示します</td></tr>
           <tr><td>右上の <strong>⚙</strong></td><td>ライトテーマ（明るい画面）とダークテーマ（暗い画面）を切り替えられます。設定パネルの下にある「Session Log」は評価実験用の機能で、ふだんは使いません（記録はブラウザの中だけで行われ、JSON／CSV ファイルとして保存できます）</td></tr>
         </tbody>
       </table>

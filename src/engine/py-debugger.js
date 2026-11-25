@@ -12,6 +12,7 @@ import { TraceDebugger, ExecutionError, finalizePartialTrace } from 'js-interpre
 import { parse } from './parse.js';
 import { evaluate, createRecorder, PyScope, installInvoker } from './interpreter.js';
 import { PyError } from './values.js';
+import { setRuntimeLang } from './messages-en.js';
 
 /**
  * Python のノード型の役割（共通コアの NodeCategories）
@@ -38,9 +39,11 @@ export const PY_NODE_CATEGORIES = Object.freeze({
  */
 /**
  * @param {string} source
- * @param {{ maxSteps?: number, stdin?: string }} [options] stdin：input() で読む内容（改行区切り）
+ * @param {{ maxSteps?: number, stdin?: string, lang?: 'ja'|'en' }} [options] stdin：input() で読む内容（改行区切り）。
+ *   lang：except で捕まえた例外の str(e) の言語（画面の表示言語。ADR-010）
  */
-export function runPython(source, { maxSteps = 100_000, stdin = '' } = {}) {
+export function runPython(source, { maxSteps = 100_000, stdin = '', lang = 'ja' } = {}) {
+  setRuntimeLang(lang);
   const ast = parse(source);
   const recorder = createRecorder(maxSteps);
   const env = new PyScope(null, 'global');
@@ -65,11 +68,11 @@ export class PyDebugger extends TraceDebugger {
 
   /**
    * @param {string} source
-   * @param {{maxSteps?: number}} [options]
+   * @param {{maxSteps?: number, stdin?: string, lang?: 'ja'|'en'}} [options] lang：str(e) の言語（ADR-010）
    */
   constructor(source, options = {}) {
     const maxSteps = options.maxSteps ?? 100_000;
-    const { ast, trace, consoleLogs } = runPython(source, { maxSteps, stdin: options.stdin ?? '' });
+    const { ast, trace, consoleLogs } = runPython(source, { maxSteps, stdin: options.stdin ?? '', lang: options.lang });
     super({ source, trace, ast, consoleLogs, maxSteps });
   }
 }

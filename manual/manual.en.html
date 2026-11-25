@@ -216,7 +216,7 @@
       </table>
       <p>Some displays differ from Python itself (CPython).</p>
       <ul>
-        <li>Messages of exceptions raised by PyVisualizer (such as the <code>ValueError</code> from <code>int("x")</code>) are explanations in Japanese for beginners. The exception type names are the same. Messages of exceptions you raise with <code>raise</code> appear as written</li>
+        <li>Messages of exceptions raised by PyVisualizer (such as the <code>ValueError</code> from <code>int("x")</code>) are the same English messages as Python itself (CPython) shows; in Japanese display they are explanations in Japanese for beginners. Messages of exceptions you raise with <code>raise</code> appear as written</li>
         <li>Sets are shown in insertion order (Python itself uses an order determined by hash values)</li>
         <li>Generator expressions (<code>(x for x in xs)</code>) are computed at once into a list. For uses such as <code>sum(x for x in xs)</code> the result is the same</li>
         <li><code>print</code> of an instance shows <code>&lt;__main__.Dog object&gt;</code> without an address</li>
@@ -248,12 +248,12 @@
       <p>After editing the code, press “Run” again to re-run it with your changes.</p>
 
       <h3>When an error occurs</h3>
-      <p>If the code has a mistake, an error message appears below the code. The labels are in English, but the messages themselves are currently shown in Japanese only.</p>
+      <p>If the code has a mistake, an error message appears below the code.</p>
       <table>
         <thead><tr><th>Label</th><th>Meaning</th></tr></thead>
         <tbody>
           <tr><td><strong>Syntax Error</strong></td><td>The code cannot run because of how it is written (a missing <code>:</code>, wrong indentation, a missing bracket, etc.). The message shows the line of the mistake and a common cause</td></tr>
-          <tr><td><strong>Runtime Error</strong></td><td>The code is written correctly, but a problem occurred while it was running (an index out of range, division by zero, etc.). The message shows the Python exception name, such as <code>IndexError</code>, with an explanation. You can still step through everything up to just before the error</td></tr>
+          <tr><td><strong>Runtime Error</strong></td><td>The code is written correctly, but a problem occurred while it was running (an index out of range, division by zero, etc.). The message shows the Python exception name, such as <code>IndexError</code>, with the same message as Python itself. You can still step through everything up to just before the error</td></tr>
         </tbody>
       </table>
       <figure>
@@ -431,7 +431,7 @@
         <thead><tr><th>Button</th><th>Description</th></tr></thead>
         <tbody>
           <tr><td><strong>?</strong> at the top right</td><td>Opens this manual (in Japanese or English, matching the display language)</td></tr>
-          <tr><td><strong>EN</strong> / <strong>日</strong> at the top right</td><td>Switches buttons and tabs between English and Japanese (Python error messages are currently in Japanese only). On your first visit, the app uses Japanese if your browser prefers Japanese, and English otherwise</td></tr>
+          <tr><td><strong>EN</strong> / <strong>日</strong> at the top right</td><td>Switches buttons, tabs, and error messages between English and Japanese. What you <code>print</code> from an exception caught with <code>except</code> stays in the language at the time you ran the program (run it again after switching). On your first visit, the app uses Japanese if your browser prefers Japanese, and English otherwise</td></tr>
           <tr><td><strong>⚙</strong> at the top right</td><td>Switches between the light and dark themes. “Session Log” at the bottom of the settings panel is a feature for evaluation studies and is not needed in normal use (it records only inside your browser and can save the log as a JSON or CSV file)</td></tr>
         </tbody>
       </table>

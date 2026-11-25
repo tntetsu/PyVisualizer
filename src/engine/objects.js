@@ -11,6 +11,7 @@
  * values.js の repr・pyEq などから呼べるよう、評価器が setInvoker() で呼び出しの関数を渡す。
  */
 import { PyError, makeTuple, isStr } from './values.js';
+import { runtimeBody } from './messages-en.js';
 
 export class PyClass {
   /**
@@ -144,7 +145,8 @@ export function toPyException(err) {
   if (err instanceof PyError) {
     const cls = EXCEPTIONS[err.pyType];
     if (!cls) return null;
-    const e = makeException(cls, [err.pyMessage ?? err.message]);
+    // str(e) は実行したときの表示言語にする（英語表示なら CPython と同じ文面。ADR-010）
+    const e = makeException(cls, [runtimeBody(err.pyType, err.pyMessage ?? err.message)]);
     e.engineError = err;   // 捕まえずに実行が止まったときに、元の日本語のメッセージを出すため
     return e;
   }

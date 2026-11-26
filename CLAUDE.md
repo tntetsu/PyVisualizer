@@ -27,6 +27,10 @@
 | [../JSVisualizer](../JSVisualizer) | 可視化フロントエンド（ビュー 20 種前後） | フロントエンドを言語非依存にして共有する（Phase 3） |
 | [../BhvVisualizer](../BhvVisualizer) | 学習ログ収集・分析（Firebase） | `codes.language` を追加して Python のコードも扱う（Phase 6） |
 
+## リポジトリ全体の地図
+
+Visualizer のファミリーと、その記事・論文・ノートのリポジトリの一覧・作った順番・依存と参照の関係は、[../agentic-coding-notes/docs/projects-map.md](../agentic-coding-notes/docs/projects-map.md)（非公開）にまとめている。ここには写さず、このリポジトリに要る依存先だけを書く。新しいリポジトリを作ったら、地図に 1 行足す。
+
 ## リポジトリ構成
 
 ```

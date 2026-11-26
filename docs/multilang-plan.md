@@ -121,6 +121,8 @@ JSInterpreter・JSVisualizer の作業ブランチを main にマージすると
 
 ### 4.3 C と C++ のリポジトリ
 
+> 計画書：[../CppVisualizer/docs/development-plan.md](../../CppVisualizer/docs/development-plan.md)（2026-11-26 作成。以後はこちらを更新する）。Phase 0 の結果は [phase0-report.md](../../CppVisualizer/docs/phase0-report.md)（`@lezer/cpp` の式の木は C の優先順位と合わないので、式は自前で読み直す）
+
 **目的**：C の入門（変数・配列・文字列・ポインタ・構造体・`malloc`/`free`・`printf`/`scanf`）を可視化し、その上に C++ の入門（参照・クラス・`new`/`delete`・`std::string`・`std::vector`・`cout`/`cin`）を足す。
 
 - **パーサー**：`@lezer/cpp`（1.1.6）で C と C++ の両方を読む。C では変数名にできる C++ のキーワード（`new`・`class`・`this` など）が読めない場合の扱いを Phase 0 で確かめる。エディタは `@codemirror/lang-cpp`

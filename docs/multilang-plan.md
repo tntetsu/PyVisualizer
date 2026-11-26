@@ -1,6 +1,6 @@
 # 多言語化の計画（各リポジトリの計画書の出発点）（初版 2026-11-25）
 
-PyVisualizer（Python 版）を作った経験をもとに、Java・C・C++・TypeScript への展開と、JS 版のパーサーの Lezer 化を計画する。この文書は、各リポジトリの開発計画書（`docs/development-plan.md`）を書くときの出発点にする。各リポジトリの計画書を作ったら、この文書からはその計画書へリンクする。
+PyVisualizer（Python 版）を作った経験をもとに、Java・C・C++・Go・TypeScript への展開と、JS 版のパーサーの Lezer 化を計画する。この文書は、各リポジトリの開発計画書（`docs/development-plan.md`）を書くときの出発点にする。各リポジトリの計画書を作ったら、この文書からはその計画書へリンクする。
 
 ## 1. 結論（2026-11-25 の方針）
 
@@ -8,11 +8,12 @@ PyVisualizer（Python 版）を作った経験をもとに、Java・C・C++・Ty
 |---|---|---|
 | Java | 新しいリポジトリ **JavaVisualizer** | 評価器を新しく書く。PyVisualizer と同じ構成 |
 | C と C++ | 新しいリポジトリ **CppVisualizer**（C 版も含む） | 評価器を 1 つ書き、言語プロファイルを C と C++ の 2 つにする。**C を先に作り、C++ はその上に足す**。C 版のサイトは `…/CppVisualizer/c/`、C++ 版は `…/CppVisualizer/`（ツールの名前は CVisualizer・CppVisualizer） |
+| Go | 新しいリポジトリ **GoVisualizer**（2026-11-26 追加） | 評価器を新しく書く。PyVisualizer と同じ構成。ポインタ・構造体の見せ方は CppVisualizer の画面の作業を使う |
 | TypeScript | **JSInterpreter**（JS の仲間） | JS の評価器を使い、型は読み飛ばす。JS の Lezer 化の上に足す |
 | JS の Lezer 化 | **JSInterpreter** | 手書きのパーサーを Lezer（`@lezer/javascript`）に置き換える。授業で使っているので、作業ブランチで進めて学期後にマージ |
 | 共通の土台（共通コア・画面） | 今は JSInterpreter・JSVisualizer の作業ブランチ | 各言語は**タグかコミットで固定して参照**する。学期後に独立させる（3 節） |
 
-**名前の規則**（2026-11-25 決定）：ツールの名前は、その言語のファイルの拡張子にそろえる。JSVisualizer（`.js`）・PyVisualizer（`.py`）・TSVisualizer（`.ts`）・CVisualizer（`.c`）・CppVisualizer（`.cpp`）・JavaVisualizer（`.java`）。`Jv`・`Jav` のような広く使われていない略は使わない（言語が分かりにくく、つづりを推測しにくく、検索しにくい）。
+**名前の規則**（2026-11-25 決定）：ツールの名前は、その言語のファイルの拡張子にそろえる。JSVisualizer（`.js`）・PyVisualizer（`.py`）・TSVisualizer（`.ts`）・CVisualizer（`.c`）・CppVisualizer（`.cpp`）・JavaVisualizer（`.java`）・GoVisualizer（`.go`）。`Jv`・`Jav` のような広く使われていない略は使わない（言語が分かりにくく、つづりを推測しにくく、検索しにくい）。
 
 C と C++ を 1 つにする理由：
 
@@ -68,6 +69,7 @@ JSInterpreter・JSVisualizer の作業ブランチを main にマージすると
 |---|---|
 | Java | 型の付いた変数の表示（`int x = 3`）、配列の既定値（`0`・`null`）、`null` の表示 |
 | C・C++ | アドレスとポインタの値（`0x7ffd…` の代わりに、図の上の矢印と短い番号）、スタックのフレームとヒープの区別、未初期化の値の表示、構造体の表示 |
+| Go | 型の付いた変数とゼロ値（Java と共通）、ポインタの矢印と構造体（C と共通。アドレスの演算はない）、スライスと、その元になる配列（`len`・`cap`・共有）の表示、ゴルーチンごとのスタックとチャネル（Phase 5。4.4 節） |
 | TypeScript | なし（JS と同じ）。型注釈はコード表示の色分けだけ |
 
 ## 4. 各リポジトリの計画の出発点
@@ -132,18 +134,35 @@ JSInterpreter・JSVisualizer の作業ブランチを main にマージすると
 - **C++ の範囲**：テンプレートと STL は大きいので、入門で使うもの（`string`・`vector`・`map`・`cout`/`cin`）に絞る。例外・RAII（デストラクタの呼ばれる時期）は見せる価値が高い
 - **入力**：`scanf`・`cin` は入力欄を使う
 
+### 4.4 GoVisualizer（2026-11-26 追加）
+
+**目的**：入門の Go（基本の型・`:=`・`for`・配列とスライス・`map`・構造体とメソッド・ポインタ・インターフェース・複数の戻り値と `error`・`defer`/`panic`/`recover`・`fmt`）を可視化する。その先に、Go らしいところとして**ゴルーチンとチャネル**を見せる。
+
+- **パーサー**：`@lezer/go`（1.0.1）、エディタは `@codemirror/lang-go`（6.0.1）。ジェネリクス（型パラメータ）にどこまで対応しているかを Phase 0 で確かめる
+- **値の表現（Phase 0 で決める）**
+  - 型の付いた変数とゼロ値（`var x int` は `0`、`string` は `""`、ポインタ・スライス・`map` は `nil`）。Java（4.2 節）と画面の作業を共有する
+  - 整数は型ごとの幅であふれる（`int` は 64 ビットを前提にして BigInt か、範囲を絞るか）。`float64` の表示は Go の規則（`fmt.Println(0.1+0.2)` は `0.30000000000000004`、`1e+21`）
+  - **スライス**：元の配列・長さ・容量を持つ。`append` で容量を超えると新しい配列に移り、超えなければ元の配列を共有する。ここがいちばん教育的な価値の高いところで、メモリのビューで共有を見せる
+  - ポインタは C と同じ矢印で見せる（アドレスの演算はない）。スタックとヒープの区別はエスケープ解析で決まり、利用者からは見えないので、区別しない
+  - `map` の繰り返しの順序は、Go では実行ごとに変わる（わざと乱される）。正解と比べるときは、順序に依存しない出力のプログラムだけにするか、出力を並べ替えて比べる
+  - 文字列はバイトの列（`len("あ")` は 3、`for range` はルーン単位）
+- **ゴルーチンとチャネル（Phase 5 で足す。2026-11-26 決定）**：スケジューリングは本物の処理系では決まらないので、評価器では決まった順序（例：ラウンドロビン）で動かし、ゴルーチンごとのスタックとチャネルの中身を見せる。比較テストは、結果が順序によらないプログラム（`sync.WaitGroup` で待つ、チャネルで受け渡すなど）だけにする。デッドロック（`all goroutines are asleep`）は検出して説明する
+- **正解**：`go run`（この環境にはまだ入っていない。入れる必要がある。CI では `actions/setup-go` で入れる）。変数の状態は Delve（`dlv`）で取り出す方法を Phase 0 で調べる
+- **画面**：3.3 節。ポインタ・構造体は CppVisualizer、型付きの変数は JavaVisualizer で足すものを使い、Go で新しく要るのはスライスとゴルーチンの見せ方
+- **入力**：`fmt.Scan`・`bufio.Scanner` は入力欄を使う
+
 ## 5. 順番（2026-11-25 決定）
 
 学期中（〜2027 年 1 月）は、授業で使っているリポジトリ（JSInterpreter・JSVisualizer の main）を変えない。
 
 | 時期 | 進めること |
 |---|---|
-| 学期中 | 3.1 節（参照の固定）→ **JavaVisualizer** → **CppVisualizer**（C を先に、続けて C++）。画面に要るものは JSVisualizer の作業ブランチ `feature/multilang` に足す |
+| 学期中 | 3.1 節（参照の固定）→ **JavaVisualizer** → **CppVisualizer**（C を先に、続けて C++）→ **GoVisualizer**（2026-11-26 決定）。画面に要るものは JSVisualizer の作業ブランチ `feature/multilang` に足す |
 | 学期後（2027 年 2 月〜） | JSInterpreter・JSVisualizer の作業ブランチのマージ、3.2 節（土台の独立）、PyVisualizer の Phase 6（BhvVisualizer 連携）、JS の Lezer 化と TypeScript（TSVisualizer） |
 
 JS の Lezer 化を学期後にするのは、授業の JS 版に影響しうる変更で、学期中は main にマージできず、作業ブランチ（`feature/interp-core`）との取り込みも重なるため。
 
-学期中に Java と C/C++ の 2 つを進めるので、画面の作業ブランチへの変更が 3 つの言語（Python・Java・C/C++）にまたがる。3.1 節の参照の固定を、JavaVisualizer を始める前に済ませる。
+学期中に Java・C/C++・Go を進めるので、画面の作業ブランチへの変更が 4 つの言語（Python・Java・C/C++・Go）にまたがる。Go を C/C++ の後にするのは、Go のポインタ・構造体の見せ方に、CppVisualizer で作る画面を使えるため。3.1 節の参照の固定を、JavaVisualizer を始める前に済ませる。
 
 ## 6. 正解の処理系（2026-11-25 の環境）
 
@@ -152,16 +171,19 @@ JS の Lezer 化を学期後にするのは、授業の JS 版に影響しうる
 | Python | `python3` | あり（3.12.3） |
 | Java | `java Main.java` | あり（OpenJDK 21。`javac` はないが単一ファイルの実行で足りる） |
 | C・C++ | `gcc`・`g++` | なし（入れる必要がある。CI では `ubuntu-latest` に入っている） |
+| Go | `go run` | なし（入れる必要がある。CI では `actions/setup-go`） |
 | TypeScript | `tsc`＋`node` | `node` はあり（22）。`tsc` は npm の開発依存で入れる |
 
 ## 7. 決めること
 
 | # | 論点 | 選択肢 | 推奨 |
 |---|---|---|---|
-| 1 | 学期中に始める言語 | Java／C | **決定（2026-11-25）：Java から始め、学期中に C/C++ まで進める**。JS の Lezer 化・TypeScript・土台の独立は学期後 |
+| 1 | 学期中に始める言語 | Java／C | **決定（2026-11-25）：Java から始め、学期中に C/C++ まで進める**（2026-11-26 に Go を追加。8）。JS の Lezer 化・TypeScript・土台の独立は学期後 |
 | 2 | C と C++ のリポジトリの名前 | 1 つのリポジトリで C 版を下の階層に置く（案 1）／C 版のサイトだけの小さなリポジトリ CVisualizer を別に作る（案 2） | **決定（2026-11-25）：案 1**。リポジトリは CppVisualizer。C 版は `…/CppVisualizer/c/` で公開し、ツールの名前は CVisualizer と呼ぶ |
 | 3 | サイトを言語ごとに分けるか | 言語ごと（PyVisualizer と同じ）／1 つのサイトで言語を切り替える | **決定（2026-11-25）：言語ごと**（Java は JavaVisualizer、C と C++ は CppVisualizer の中の 2 つのサイト）。TypeScript は 4 で決める |
 | 4 | TypeScript のサイト | JSVisualizer の中で言語として選ぶ／別のサイト | 学期後の土台の整理（3.2 節）と一緒に決める |
 | 5 | TypeScript の型の誤り | 出さない（型を読み飛ばすだけ）／`tsc` と同じ型検査をする | まずは出さない。型検査は大きな作業 |
 | 6 | 土台の独立のしかた | 3.2 節の案 A／案 B | 学期後に決める |
-| 7 | 変数の状態の比較の方法 | Java は JDI／`jdb`、C・C++ は `gdb` | 各リポジトリの Phase 0 で調べる |
+| 7 | 変数の状態の比較の方法 | Java は JDI／`jdb`、C・C++ は `gdb`、Go は Delve（`dlv`） | 各リポジトリの Phase 0 で調べる |
+| 8 | GoVisualizer を始める時期 | 学期中に C/C++ と並べて／学期中に C/C++ の後／学期後 | **決定（2026-11-26）：学期中に、C/C++ の後に始める**（ポインタ・構造体の画面を CppVisualizer で先に作れるため） |
+| 9 | Go のゴルーチンとチャネルの範囲 | 入門の範囲（逐次）だけ／決まった順序で動かして見せる | **決定（2026-11-26）：逐次の範囲で Phase 2 を終え、ゴルーチンとチャネルは Phase 5 で足す** |
